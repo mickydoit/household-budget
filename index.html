@@ -10,10 +10,10 @@
   <title>Household Budget</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="assets/css/styles.css?v=2" />
+  <link rel="stylesheet" href="assets/css/styles.css?v=3" />
   <script>
     (function () {
-      var V = '2';
+      var V = '3';
       try {
         if (localStorage.getItem('_budgetv') !== V) {
           localStorage.setItem('_budgetv', V);
@@ -30,8 +30,7 @@
   <div id="splash">
     <div class="splash-brand">
       <div class="splash-logo-wrap">
-        <span class="splash-logo-icon">₿</span>
-        <span class="splash-logo-text">Household<br/>Budget</span>
+        <img src="assets/img/logo.svg" class="splash-logo-img" alt="MBD Budget" />
       </div>
     </div>
     <div class="splash-bar-track">
@@ -39,6 +38,6 @@
     </div>
   </div>
   <div id="root"><main class="container"><p class="hint">Loading…</p></main></div>
-  <script type="module" src="assets/js/app.js?v=2"></script>
+  <script type="module" src="assets/js/app.js?v=3"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 // Data layer — dual backend: Supabase (shared) or localStorage (solo/test).
 // Both expose the same interface so the app doesn't care which is live.
 
-import { supabaseEnabled, sbSelect, sbInsert, sbUpsert, sbUpdate, sbDelete } from './supabase.js?v=2';
+import { supabaseEnabled, sbSelect, sbInsert, sbUpsert, sbUpdate, sbDelete } from './supabase.js?v=3';
 
 const DEFAULT_ACCOUNTS = [
   { id: 1, name: 'Cheque',  balance: 0, color1: '#8bffec', color2: '#4d7cff', target: null },
