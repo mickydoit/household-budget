@@ -1,7 +1,7 @@
 // Data layer — dual backend: Supabase (shared) or localStorage (solo/test).
 // Both expose the same interface so the app doesn't care which is live.
 
-import { supabaseEnabled, sbSelect, sbInsert, sbUpsert, sbUpdate, sbDelete } from './supabase.js?v=6';
+import { supabaseEnabled, sbSelect, sbInsert, sbUpsert, sbUpdate, sbDelete } from './supabase.js?v=7';
 
 const DEFAULT_INCOME_SOURCES = [
   { id: 1, name: 'Full Life Psychology', person: 'Bek',     amount: 1500, frequency: 'fortnightly', color: '#8bffec' },
@@ -92,8 +92,10 @@ const localBackend = {
   },
   async addTransaction({ amount, description, categoryId, type, date }) {
     const s = lsLoad();
-    s.transactions.push({ id: s.nextTxId++, amount: Number(amount), description: description || '', category_id: categoryId || null, type, date, created_at: new Date().toISOString() });
+    const row = { id: s.nextTxId++, amount: Number(amount), description: description || '', category_id: categoryId || null, type, date, created_at: new Date().toISOString() };
+    s.transactions.push(row);
     lsSave(s);
+    return [row];
   },
   async deleteTransaction(id) {
     const s = lsLoad();
@@ -103,9 +105,16 @@ const localBackend = {
   async setBudgetTarget({ categoryId, month, limitAmount }) {
     const s = lsLoad();
     const existing = s.budget_targets.find(b => b.category_id === categoryId && b.month === month);
-    if (existing) { existing.limit_amount = Number(limitAmount); }
-    else { s.budget_targets.push({ id: s.nextTargetId++, category_id: categoryId, month, limit_amount: Number(limitAmount) }); }
-    lsSave(s);
+    if (existing) {
+      existing.limit_amount = Number(limitAmount);
+      lsSave(s);
+      return [existing];
+    } else {
+      const row = { id: s.nextTargetId++, category_id: categoryId, month, limit_amount: Number(limitAmount) };
+      s.budget_targets.push(row);
+      lsSave(s);
+      return [row];
+    }
   },
   async deleteBudgetTarget(id) {
     const s = lsLoad();
@@ -114,8 +123,10 @@ const localBackend = {
   },
   async addGoal({ name, targetAmount, color }) {
     const s = lsLoad();
-    s.savings_goals.push({ id: s.nextGoalId++, name, target_amount: Number(targetAmount), current_amount: 0, color: color || '#8bffec', created_at: new Date().toISOString() });
+    const row = { id: s.nextGoalId++, name, target_amount: Number(targetAmount), current_amount: 0, color: color || '#8bffec', created_at: new Date().toISOString() };
+    s.savings_goals.push(row);
     lsSave(s);
+    return [row];
   },
   async updateGoalAmount(id, delta) {
     const s = lsLoad();
@@ -131,8 +142,10 @@ const localBackend = {
   },
   async addCategory({ name, color, icon, type }) {
     const s = lsLoad();
-    s.categories.push({ id: s.nextCatId++, name, color: color || '#A855F7', icon: icon || '💰', type });
+    const row = { id: s.nextCatId++, name, color: color || '#A855F7', icon: icon || '💰', type };
+    s.categories.push(row);
     lsSave(s);
+    return [row];
   },
   async deleteCategory(id) {
     const s = lsLoad();
@@ -143,8 +156,10 @@ const localBackend = {
     const s = lsLoad();
     if (!s.bank_accounts) s.bank_accounts = [];
     if (!s.nextAcctId) s.nextAcctId = (s.bank_accounts.reduce((m, a) => Math.max(m, a.id), 0)) + 1;
-    s.bank_accounts.push({ id: s.nextAcctId++, name, balance: Number(balance) || 0, color1: color1 || '#8bffec', color2: color2 || '#A855F7', target: target ? Number(target) : null });
+    const row = { id: s.nextAcctId++, name, balance: Number(balance) || 0, color1: color1 || '#8bffec', color2: color2 || '#A855F7', target: target ? Number(target) : null };
+    s.bank_accounts.push(row);
     lsSave(s);
+    return [row];
   },
   async updateAccountBalance(id, balance) {
     const s = lsLoad();
@@ -170,8 +185,10 @@ const localBackend = {
     const s = lsLoad();
     if (!s.income_sources) s.income_sources = DEFAULT_INCOME_SOURCES.map(x => ({ ...x }));
     if (!s.nextIncomeId) s.nextIncomeId = (s.income_sources.reduce((m, x) => Math.max(m, x.id), 0)) + 1;
-    s.income_sources.push({ id: s.nextIncomeId++, name, person: person || '', amount: Number(amount), frequency: frequency || 'fortnightly', color: color || '#8bffec' });
+    const row = { id: s.nextIncomeId++, name, person: person || '', amount: Number(amount), frequency: frequency || 'fortnightly', color: color || '#8bffec' };
+    s.income_sources.push(row);
     lsSave(s);
+    return [row];
   },
   async deleteIncomeSource(id) {
     const s = lsLoad();
@@ -204,19 +221,19 @@ const supabaseBackend = {
     };
   },
   async addTransaction({ amount, description, categoryId, type, date }) {
-    await sbInsert('transactions', { amount: Number(amount), description: description || '', category_id: categoryId || null, type, date });
+    return await sbInsert('transactions', { amount: Number(amount), description: description || '', category_id: categoryId || null, type, date });
   },
   async deleteTransaction(id) {
     await sbDelete('transactions', `id=eq.${id}`);
   },
   async setBudgetTarget({ categoryId, month, limitAmount }) {
-    await sbUpsert('budget_targets', { category_id: categoryId, month, limit_amount: Number(limitAmount) }, 'category_id,month');
+    return await sbUpsert('budget_targets', { category_id: categoryId, month, limit_amount: Number(limitAmount) }, 'category_id,month');
   },
   async deleteBudgetTarget(id) {
     await sbDelete('budget_targets', `id=eq.${id}`);
   },
   async addGoal({ name, targetAmount, color }) {
-    await sbInsert('savings_goals', { name, target_amount: Number(targetAmount), current_amount: 0, color: color || '#8bffec' });
+    return await sbInsert('savings_goals', { name, target_amount: Number(targetAmount), current_amount: 0, color: color || '#8bffec' });
   },
   async updateGoalAmount(id, delta) {
     const rows = await sbSelect('savings_goals', `select=current_amount&id=eq.${id}`);
@@ -227,13 +244,13 @@ const supabaseBackend = {
     await sbDelete('savings_goals', `id=eq.${id}`);
   },
   async addCategory({ name, color, icon, type }) {
-    await sbInsert('categories', { name, color: color || '#A855F7', icon: icon || '💰', type });
+    return await sbInsert('categories', { name, color: color || '#A855F7', icon: icon || '💰', type });
   },
   async deleteCategory(id) {
     await sbDelete('categories', `id=eq.${id}`);
   },
   async addAccount({ name, balance, color1, color2, target }) {
-    await sbInsert('bank_accounts', { name, balance: Number(balance) || 0, color1: color1 || '#8bffec', color2: color2 || '#A855F7', target: target ? Number(target) : null });
+    return await sbInsert('bank_accounts', { name, balance: Number(balance) || 0, color1: color1 || '#8bffec', color2: color2 || '#A855F7', target: target ? Number(target) : null });
   },
   async updateAccountBalance(id, balance) {
     await sbUpdate('bank_accounts', `id=eq.${id}`, { balance: Number(balance) });
@@ -246,7 +263,7 @@ const supabaseBackend = {
     await sbDelete('budget_targets', 'id=gt.0');
   },
   async addIncomeSource({ name, person, amount, frequency, color }) {
-    await sbInsert('income_sources', { name, person: person || '', amount: Number(amount), frequency: frequency || 'fortnightly', color: color || '#8bffec' });
+    return await sbInsert('income_sources', { name, person: person || '', amount: Number(amount), frequency: frequency || 'fortnightly', color: color || '#8bffec' });
   },
   async deleteIncomeSource(id) {
     await sbDelete('income_sources', `id=eq.${id}`);

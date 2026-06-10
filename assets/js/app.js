@@ -1,8 +1,8 @@
 // SPA router + event wiring. Hash-based routing.
 
-import { store } from './store.js?v=6';
-import { currentMonth, prevMonth, nextMonth, getDashboard, getTransactionsView, getBudgetView, getGoalsView, toMonthly, fromMonthly } from './compute.js?v=6';
-import { renderDashboard, renderTransactions, renderBudget, renderGoals, renderSettings } from './views.js?v=6';
+import { store } from './store.js?v=7';
+import { currentMonth, prevMonth, nextMonth, getDashboard, getTransactionsView, getBudgetView, getGoalsView, toMonthly, fromMonthly } from './compute.js?v=7';
+import { renderDashboard, renderTransactions, renderBudget, renderGoals, renderSettings } from './views.js?v=7';
 
 const root = document.getElementById('root');
 const PASSWORD = (window.BUDGET_CONFIG || {}).ADMIN_PASSWORD || 'budget2026';
@@ -22,6 +22,51 @@ let addingIncome = false;
 let flash        = null;
 let lastPaintedRoute = null;
 let lastRenderedBody = null;
+let lastData         = null;   // most recent store snapshot, used by undo handlers
+
+// ── Undo stack ────────────────────────────────────────────────
+const undoStack = [];
+const MAX_UNDO  = 20;
+
+function pushUndo(fn) {
+  undoStack.push(fn);
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+}
+
+function showToast(msg) {
+  let el = document.getElementById('undo-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'undo-toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add('visible');
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => el.classList.remove('visible'), 1800);
+}
+
+// Extract the row id from what store add-methods return (array or object).
+function rowId(result) {
+  if (!result) return null;
+  return Array.isArray(result) ? result[0]?.id : result?.id;
+}
+
+document.addEventListener('keydown', async (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+    if (!undoStack.length) { showToast('Nothing to undo'); return; }
+    e.preventDefault();
+    const fn = undoStack.pop();
+    try {
+      await fn();
+      await render();
+      showToast('Undone');
+    } catch (err) {
+      window.alert('Undo failed: ' + err.message);
+      await render();
+    }
+  }
+});
 
 function applyTheme(dark) {
   document.body.dataset.theme = dark ? 'dark' : 'light';
@@ -113,6 +158,8 @@ async function render() {
     return;
   }
 
+  lastData = data;
+
   let body;
   switch (route) {
     case '/transactions':
@@ -136,9 +183,16 @@ async function render() {
   paint(route, body);
 }
 
-async function run(fn) {
+// run(doFn, makeUndoFn?)
+//   doFn        — async action to perform
+//   makeUndoFn  — optional fn(result) → async undo fn | null
+async function run(fn, makeUndoFn = null) {
   try {
-    await fn();
+    const result = await fn();
+    if (makeUndoFn) {
+      const undoFn = makeUndoFn(result);
+      if (undoFn) pushUndo(undoFn);
+    }
     await render();
   } catch (err) {
     flash = { problem: err.message };
@@ -158,67 +212,99 @@ root.addEventListener('submit', (e) => {
   if (action === 'add-tx') {
     const amount = Number(fd.get('amount'));
     if (!amount || amount <= 0) { window.alert('Enter a valid amount.'); return; }
-    run(() => store.addTransaction({
+    const params = {
       amount,
       description: String(fd.get('description') || '').trim(),
       categoryId: fd.get('categoryId') ? Number(fd.get('categoryId')) : null,
       type: fd.get('type') || 'expense',
       date: fd.get('date') || new Date().toISOString().slice(0, 10),
-    }));
+    };
+    run(
+      () => store.addTransaction(params),
+      (result) => { const id = rowId(result); return id ? () => store.deleteTransaction(id) : null; }
+    );
     addingTx = false;
 
   } else if (action === 'set-budget') {
     const limitInPeriod = Number(fd.get('limitAmount'));
     if (!limitInPeriod || limitInPeriod <= 0) { window.alert('Enter a valid limit.'); return; }
-    // Convert from display period back to monthly for storage
     const limitMonthly = toMonthly(limitInPeriod, period);
-    run(() => store.setBudgetTarget({
-      categoryId: Number(fd.get('categoryId')),
-      month,
-      limitAmount: limitMonthly,
-    }));
+    const catId = Number(fd.get('categoryId'));
+    const prevTarget = lastData?.budget_targets.find(b => b.category_id === catId && b.month === month);
+    run(
+      () => store.setBudgetTarget({ categoryId: catId, month, limitAmount: limitMonthly }),
+      (result) => {
+        if (prevTarget) {
+          return () => store.setBudgetTarget({ categoryId: catId, month, limitAmount: prevTarget.limit_amount });
+        }
+        const id = rowId(result);
+        return id ? () => store.deleteBudgetTarget(id) : null;
+      }
+    );
 
   } else if (action === 'add-goal') {
     const targetAmount = Number(fd.get('targetAmount'));
     if (!targetAmount || targetAmount <= 0) { window.alert('Enter a valid target amount.'); return; }
-    run(() => store.addGoal({
+    const params = {
       name: String(fd.get('name') || '').trim(),
       targetAmount,
       color: fd.get('color') || '#8bffec',
-    }));
+    };
+    run(
+      () => store.addGoal(params),
+      (result) => { const id = rowId(result); return id ? () => store.deleteGoal(id) : null; }
+    );
     addingGoal = false;
 
   } else if (action === 'add-funds') {
     const delta = Number(fd.get('delta'));
     if (!delta) { window.alert('Enter an amount.'); return; }
-    run(() => store.updateGoalAmount(Number(fd.get('goalId')), delta));
+    const goalId = Number(fd.get('goalId'));
+    run(
+      () => store.updateGoalAmount(goalId, delta),
+      () => () => store.updateGoalAmount(goalId, -delta)
+    );
     addFundsId = null;
 
   } else if (action === 'add-acct') {
     const name = String(fd.get('name') || '').trim();
     if (!name) { window.alert('Enter an account name.'); return; }
     const colors = String(fd.get('colors') || '#8bffec|#A855F7').split('|');
-    run(() => store.addAccount({
+    const params = {
       name,
       balance: Number(fd.get('balance')) || 0,
       color1: colors[0] || '#8bffec',
       color2: colors[1] || '#A855F7',
       target: fd.get('target') ? Number(fd.get('target')) : null,
-    }));
+    };
+    run(
+      () => store.addAccount(params),
+      (result) => { const id = rowId(result); return id ? () => store.deleteAccount(id) : null; }
+    );
     addingAcct = false;
 
   } else if (action === 'update-acct-balance') {
-    run(() => store.updateAccountBalance(Number(fd.get('acctId')), Number(fd.get('balance'))));
+    const acctId = Number(fd.get('acctId'));
+    const newBalance = Number(fd.get('balance'));
+    const prevAcct = lastData?.bank_accounts?.find(a => a.id === acctId);
+    run(
+      () => store.updateAccountBalance(acctId, newBalance),
+      () => prevAcct != null ? () => store.updateAccountBalance(acctId, prevAcct.balance) : null
+    );
 
   } else if (action === 'add-cat') {
     const name = String(fd.get('name') || '').trim();
     if (!name) { window.alert('Enter a category name.'); return; }
-    run(() => store.addCategory({
+    const params = {
       name,
       color: fd.get('color') || '#A855F7',
       icon: String(fd.get('icon') || '').trim() || '💰',
       type: fd.get('type') || 'expense',
-    }));
+    };
+    run(
+      () => store.addCategory(params),
+      (result) => { const id = rowId(result); return id ? () => store.deleteCategory(id) : null; }
+    );
     addingCat = false;
 
   } else if (action === 'add-income') {
@@ -226,13 +312,17 @@ root.addEventListener('submit', (e) => {
     if (!name) { window.alert('Enter an income source name.'); return; }
     const amount = Number(fd.get('amount'));
     if (!amount || amount <= 0) { window.alert('Enter a valid amount.'); return; }
-    run(() => store.addIncomeSource({
+    const params = {
       name,
       person:    String(fd.get('person') || '').trim(),
       amount,
       frequency: fd.get('frequency') || 'fortnightly',
       color:     fd.get('color') || '#8bffec',
-    }));
+    };
+    run(
+      () => store.addIncomeSource(params),
+      (result) => { const id = rowId(result); return id ? () => store.deleteIncomeSource(id) : null; }
+    );
     addingIncome = false;
 
   } else if (action === 'admin-login') {
@@ -281,11 +371,21 @@ root.addEventListener('click', (e) => {
 
   } else if (action === 'del-tx') {
     if (!window.confirm('Delete this transaction?')) return;
-    run(() => store.deleteTransaction(Number(el.dataset.id)));
+    const id = Number(el.dataset.id);
+    const tx = lastData?.transactions?.find(t => t.id === id);
+    run(
+      () => store.deleteTransaction(id),
+      () => tx ? () => store.addTransaction({ amount: tx.amount, description: tx.description, categoryId: tx.category_id, type: tx.type, date: tx.date }) : null
+    );
 
   } else if (action === 'del-budget') {
     if (!window.confirm('Remove this budget limit?')) return;
-    run(() => store.deleteBudgetTarget(Number(el.dataset.id)));
+    const id = Number(el.dataset.id);
+    const target = lastData?.budget_targets?.find(b => b.id === id);
+    run(
+      () => store.deleteBudgetTarget(id),
+      () => target ? () => store.setBudgetTarget({ categoryId: target.category_id, month: target.month, limitAmount: target.limit_amount }) : null
+    );
 
   } else if (action === 'toggle-add-goal') {
     addingGoal = true;
@@ -305,7 +405,12 @@ root.addEventListener('click', (e) => {
 
   } else if (action === 'del-goal') {
     if (!window.confirm('Delete this savings goal?')) return;
-    run(() => store.deleteGoal(Number(el.dataset.id)));
+    const id = Number(el.dataset.id);
+    const goal = lastData?.savings_goals?.find(g => g.id === id);
+    run(
+      () => store.deleteGoal(id),
+      () => goal ? () => store.addGoal({ name: goal.name, targetAmount: goal.target_amount, color: goal.color }) : null
+    );
 
   } else if (action === 'toggle-add-acct') {
     addingAcct = true;
@@ -317,7 +422,12 @@ root.addEventListener('click', (e) => {
 
   } else if (action === 'del-acct') {
     if (!window.confirm('Delete this account?')) return;
-    run(() => store.deleteAccount(Number(el.dataset.id)));
+    const id = Number(el.dataset.id);
+    const acct = lastData?.bank_accounts?.find(a => a.id === id);
+    run(
+      () => store.deleteAccount(id),
+      () => acct ? () => store.addAccount({ name: acct.name, balance: acct.balance, color1: acct.color1, color2: acct.color2, target: acct.target }) : null
+    );
 
   } else if (action === 'toggle-add-cat') {
     addingCat = true;
@@ -329,7 +439,12 @@ root.addEventListener('click', (e) => {
 
   } else if (action === 'del-cat') {
     if (!window.confirm('Delete this category? Existing transactions will become uncategorised.')) return;
-    run(() => store.deleteCategory(Number(el.dataset.id)));
+    const id = Number(el.dataset.id);
+    const cat = lastData?.categories?.find(c => c.id === id);
+    run(
+      () => store.deleteCategory(id),
+      () => cat ? () => store.addCategory({ name: cat.name, color: cat.color, icon: cat.icon, type: cat.type }) : null
+    );
 
   } else if (action === 'clear-all') {
     if (!window.confirm('Delete ALL transactions and budget targets? This cannot be undone.')) return;
@@ -350,7 +465,12 @@ root.addEventListener('click', (e) => {
 
   } else if (action === 'del-income') {
     if (!window.confirm('Remove this income source?')) return;
-    run(() => store.deleteIncomeSource(Number(el.dataset.id)));
+    const id = Number(el.dataset.id);
+    const src = lastData?.income_sources?.find(s => s.id === id);
+    run(
+      () => store.deleteIncomeSource(id),
+      () => src ? () => store.addIncomeSource({ name: src.name, person: src.person, amount: src.amount, frequency: src.frequency, color: src.color }) : null
+    );
   }
 });
 
