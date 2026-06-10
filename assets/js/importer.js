@@ -342,12 +342,35 @@ async function extractPDFLines(file) {
   return lines;
 }
 
-const AMT_RE = /\$?\d{1,3}(?:,\d{3})*\.\d{2}(?:\s*(?:CR|DR))?/gi;
+// Captures optional leading minus + optional $ + amount + optional CR/DR suffix
+const AMT_RE  = /-?\$?\d{1,3}(?:,\d{3})*\.\d{2}(?:\s*(?:CR|DR))?/gi;
 const DATE_RE = /\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4}[\/\-]\d{2}[\/\-]\d{2})\b/i;
+
+// ── Shared helper: resolve type + category for any row ────────
+// Priority: CR/DR suffix > amount sign > keyword-matched category type > default
+// Always returns a non-null categoryId by falling back to the first
+// category of the correct type.
+function resolveRow(desc, rawAmt, rawStr, categories) {
+  let type;
+  if (/\bCR\b/i.test(rawStr))      type = 'income';
+  else if (/\bDR\b/i.test(rawStr)) type = 'expense';
+  else if (rawAmt < 0)             type = 'expense';
+  else                             type = 'expense'; // positive with no suffix — refine below
+
+  // Keyword match — if the matched category has a definitive type, trust it.
+  // e.g. "SALARY CREDIT" → Salary (income) overrides the default 'expense'.
+  const catId  = categorise(desc, categories);
+  const catObj = catId ? categories.find(c => c.id === catId) : null;
+  if (catObj) type = catObj.type;
+
+  // Fallback category so categoryId is never null
+  const fallback = categories.find(c => c.type === type);
+
+  return { type, categoryId: catId || fallback?.id || null };
+}
 
 function parsePDFLines(lines, categories) {
   const results = [];
-  // Skip lines that look like headers
   const HEADER_RE = /\b(date|description|narrative|transaction|debit|credit|balance|amount|opening|closing|statement|account)\b/i;
 
   for (const line of lines) {
@@ -357,43 +380,36 @@ function parsePDFLines(lines, categories) {
     const date = parseDate(dateM[0]);
     if (!date) continue;
 
-    // Skip header rows
-    if (HEADER_RE.test(line) && !/\d{2}.\d{2}/.test(line.replace(dateM[0], ''))) continue;
+    // Skip header rows (contain keywords but no real amount)
+    if (HEADER_RE.test(line) && !/\d{1,3},\d{3}|\d+\.\d{2}/.test(line.replace(dateM[0], ''))) continue;
 
     const amtMatches = [...line.matchAll(AMT_RE)];
     if (!amtMatches.length) continue;
 
-    // With ≥2 amounts the last is usually a running balance — use second-to-last.
-    // With 1 amount, use it directly.
+    // ≥2 amounts: last is usually running balance, second-to-last is transaction.
+    // 1 amount: use it directly.
     const txMatch = amtMatches.length >= 2
       ? amtMatches[amtMatches.length - 2]
       : amtMatches[0];
 
-    const raw = txMatch[0];
-    const amount = parseAmount(raw);
-    if (!amount || amount <= 0) continue;
+    const raw    = txMatch[0];
+    const rawAmt = parseAmount(raw);
+    if (!rawAmt) continue;
+    const amount = Math.abs(rawAmt);
+    if (amount < 0.01) continue;
 
-    // CR = income, DR or no suffix = expense
-    const type = /CR/i.test(raw) ? 'income' : 'expense';
-
-    // Description: text between the date and the first amount
+    // Description: text between date and first amount
     const dateEnd  = (dateM.index ?? 0) + dateM[0].length;
     const firstAmt = amtMatches[0].index ?? line.length;
     let desc = line.slice(dateEnd, firstAmt).replace(/\s+/g, ' ').trim();
     if (!desc || desc.length < 2) {
-      // Fallback: everything after the date minus all amounts
       desc = line.slice(dateEnd).replace(AMT_RE, '').replace(/\s+/g, ' ').trim();
     }
     if (!desc || desc.length < 2) continue;
 
-    results.push({
-      date,
-      description: desc,
-      amount,
-      type,
-      categoryId: categorise(desc, categories),
-      include: true,
-    });
+    const { type, categoryId } = resolveRow(desc, rawAmt, raw, categories);
+
+    results.push({ date, description: desc, amount, type, categoryId, include: true });
   }
   return results.length ? results : null;
 }
@@ -440,14 +456,15 @@ export async function processImage(file, categories) {
   if (!data.rows?.length) return null;
 
   return data.rows
-    .map(r => ({
-      date:        String(r.date || ''),
-      description: String(r.description || ''),
-      amount:      Math.abs(Number(r.amount)) || 0,
-      type:        r.type === 'income' ? 'income' : 'expense',
-      categoryId:  categorise(String(r.description || ''), categories),
-      include:     true,
-    }))
+    .map(r => {
+      const desc   = String(r.description || '');
+      const rawAmt = Number(r.amount) || 0;
+      // Claude returns a type hint — use it as the initial guess for resolveRow
+      // by passing a fake rawStr that carries the right CR/DR marker.
+      const rawStr = r.type === 'income' ? 'CR' : 'DR';
+      const { type, categoryId } = resolveRow(desc, rawAmt, rawStr, categories);
+      return { date: String(r.date || ''), description: desc, amount: Math.abs(rawAmt), type, categoryId, include: true };
+    })
     .filter(r => r.amount > 0 && r.date);
 }
 
@@ -494,9 +511,10 @@ export function processCSV(text, categories) {
 
     if (!amount || amount <= 0) continue;
 
-    const catId = categorise(desc, categories) || (type === 'income' ? categories.find(c => c.type === 'income')?.id : categories.find(c => c.type === 'expense')?.id) || null;
+    // resolveRow may override type if keyword matches a category of opposite type
+    const resolved = resolveRow(desc, type === 'income' ? amount : -amount, '', categories);
 
-    result.push({ date, description: desc, amount, type, categoryId: catId, include: true });
+    result.push({ date, description: desc, amount, type: resolved.type, categoryId: resolved.categoryId, include: true });
   }
 
   return result.length ? result : null;

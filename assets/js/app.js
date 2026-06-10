@@ -1,9 +1,9 @@
 // SPA router + event wiring. Hash-based routing.
 
-import { store } from './store.js?v=10';
-import { currentMonth, prevMonth, nextMonth, getDashboard, getTransactionsView, getBudgetView, getGoalsView, toMonthly, fromMonthly } from './compute.js?v=10';
-import { renderDashboard, renderTransactions, renderBudget, renderGoals, renderSettings } from './views.js?v=10';
-import { processCSV, processPDF, processImage } from './importer.js?v=10';
+import { store } from './store.js?v=11';
+import { currentMonth, prevMonth, nextMonth, getDashboard, getTransactionsView, getBudgetView, getGoalsView, toMonthly, fromMonthly } from './compute.js?v=11';
+import { renderDashboard, renderTransactions, renderBudget, renderGoals, renderSettings } from './views.js?v=11';
+import { processCSV, processPDF, processImage } from './importer.js?v=11';
 
 const root = document.getElementById('root');
 const PASSWORD = (window.BUDGET_CONFIG || {}).ADMIN_PASSWORD || 'budget2026';
