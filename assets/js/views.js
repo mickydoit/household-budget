@@ -1,6 +1,6 @@
 // HTML string renderers — pure functions, no DOM mutations.
 
-import { formatMonth, formatDate, prevMonth, nextMonth, fromMonthly, PERIOD_LABELS } from './compute.js?v=5';
+import { formatMonth, formatDate, prevMonth, nextMonth, fromMonthly, PERIOD_LABELS } from './compute.js?v=6';
 
 const cfg = (typeof window !== 'undefined' && window.BUDGET_CONFIG) || {};
 const CUR = cfg.CURRENCY_SYMBOL || 'R';
@@ -39,7 +39,8 @@ function progressBar(pct, color, overBudget = false) {
 }
 
 let _ringCounter = 0;
-function ringChart({ pct, c1, c2, line1, line2, label }) {
+// sublabel shows below ring-label; when provided, line2 is omitted from inside the ring
+function ringChart({ pct, c1, c2, line1, sublabel = null, label }) {
   const uid = ++_ringCounter;
   const r = 38;
   const circ = 2 * Math.PI * r;
@@ -54,14 +55,14 @@ function ringChart({ pct, c1, c2, line1, line2, label }) {
           <stop offset="100%" stop-color="${esc(c2)}" />
         </linearGradient>
       </defs>
-      <circle cx="50" cy="50" r="${r}" fill="none" stroke-width="9" stroke="rgba(128,128,128,0.12)" />
-      <circle cx="50" cy="50" r="${r}" fill="none" stroke-width="9"
+      <circle cx="50" cy="50" r="${r}" fill="none" stroke-width="7" stroke="rgba(128,128,128,0.10)" />
+      <circle cx="50" cy="50" r="${r}" fill="none" stroke-width="7"
         stroke="url(#${gid})" stroke-dasharray="${circ.toFixed(1)}" stroke-dashoffset="${offset.toFixed(1)}"
         stroke-linecap="round" transform="rotate(-90 50 50)" />
-      <text x="50" y="46" text-anchor="middle" class="ring-line1">${esc(line1)}</text>
-      <text x="50" y="61" text-anchor="middle" class="ring-line2">${esc(line2)}</text>
+      <text x="50" y="54" text-anchor="middle" class="ring-line1">${esc(line1)}</text>
     </svg>
     <span class="ring-label">${esc(label)}</span>
+    ${sublabel !== null ? `<span class="ring-sublabel">${esc(sublabel)}</span>` : ''}
   </div>`;
 }
 
@@ -98,7 +99,7 @@ export function renderDashboard({ income, expenses, balance, spendBreakdown, bud
         pct: a.pct,
         c1: a.color1, c2: a.color2,
         line1: fmt(a.balance),
-        line2: a.target ? `of ${fmt(a.target)}` : 'balance',
+        sublabel: a.target ? `of ${fmt(a.target)}` : null,
         label: a.name,
       })).join('')
     : `<p class="hint">No accounts yet. Add one in <a href="#/settings">Settings</a>.</p>`;
@@ -113,7 +114,7 @@ export function renderDashboard({ income, expenses, balance, spendBreakdown, bud
           c1: over ? '#e8351a' : row.category.color,
           c2: over ? '#ff6b35' : '#A855F7',
           line1: `${Math.round(Math.min(pct, 9.99) * 100)}%`,
-          line2: `${fmt(row.spent)}`,
+          sublabel: fmt(row.spent),
           label: row.category.name,
         });
       }).join('')
@@ -127,19 +128,19 @@ export function renderDashboard({ income, expenses, balance, spendBreakdown, bud
     c1: income > expenses ? '#22c55e' : '#e8351a',
     c2: '#A855F7',
     line1: fmt(balance),
-    line2: balance >= 0 ? 'remaining' : 'over',
+    sublabel: balance >= 0 ? 'remaining' : 'over budget',
     label: 'Balance',
   }) + ringChart({
     pct: income > 0 ? 1 : 0,
     c1: '#22c55e', c2: '#8bffec',
     line1: fmt(income),
-    line2: 'this month',
+    sublabel: 'this month',
     label: 'Income',
   }) + ringChart({
     pct: totalBudget > 0 ? Math.min(1, expenses / totalBudget) : (expenses > 0 ? 0.5 : 0),
     c1: '#f4ff7b', c2: '#ff6b35',
     line1: fmt(expenses),
-    line2: totalBudget > 0 ? `of ${fmt(totalBudget)}` : 'spent',
+    sublabel: totalBudget > 0 ? `of ${fmt(totalBudget)}` : 'spent',
     label: 'Expenses',
   });
 
@@ -174,7 +175,11 @@ export function renderDashboard({ income, expenses, balance, spendBreakdown, bud
         c1: g.color,
         c2: '#A855F7',
         line1: `${Math.round(g.progress * 100)}%`,
-        line2: g.progress >= 1 ? 'done!' : (Number(g.target_amount) > 0 ? fmt(Number(g.target_amount) - Number(g.current_amount)) + ' left' : 'no target'),
+        sublabel: g.progress >= 1
+          ? '✓ done'
+          : Number(g.target_amount) > 0
+            ? `${fmt(g.current_amount)} / ${fmt(g.target_amount)}`
+            : 'no target',
         label: g.name,
       })).join('')
     : '';
@@ -365,7 +370,6 @@ export function renderGoals(goals, addingGoal, addFundsId) {
           c1: g.color,
           c2: '#A855F7',
           line1: `${Math.round(pct * 100)}%`,
-          line2: done ? 'complete' : fmt(remaining) + ' to go',
           label: g.name,
         });
         return `
