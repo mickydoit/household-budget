@@ -699,6 +699,73 @@ body[data-route="goals"]  .period-btn.active { color: #fff; }
   .bnav-label { display: none; }
 }
 
+/* ── CSV Import ─────────────────────────────────────────────── */
+.tx-action-bar {
+  display: flex;
+  gap: .6rem;
+  align-items: center;
+  margin-bottom: .5rem;
+  flex-wrap: wrap;
+}
+.import-label {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .52rem 1.1rem;
+  border-radius: var(--r-sm);
+  background: var(--bg-3);
+  color: var(--text-2);
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border-em);
+  transition: background .15s;
+}
+.import-label:hover { background: var(--bg-3); opacity: .85; }
+.import-file-input { display: none; }
+
+.import-review { margin-bottom: 0; }
+.import-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: .75rem;
+}
+.import-title { margin: 0 0 .15rem; font-size: 1rem; }
+.import-hint  { margin: 0; font-size: .78rem; }
+.import-actions { display: flex; gap: .5rem; flex-shrink: 0; }
+
+.import-table-wrap { overflow-x: auto; padding: 0; }
+.import-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .82rem;
+}
+.import-table th {
+  text-align: left;
+  padding: .5rem .75rem;
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-3);
+  border-bottom: 1px solid var(--border);
+}
+.import-table td {
+  padding: .45rem .75rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.import-table tbody tr:last-child td { border-bottom: none; }
+.import-row-skip td { opacity: .38; }
+.import-row-skip .import-cat-sel { opacity: .38; pointer-events: none; }
+.import-date  { white-space: nowrap; color: var(--text-3); font-size: .78rem; }
+.import-desc  { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.import-amt   { white-space: nowrap; font-weight: 700; font-variant-numeric: tabular-nums; }
+.import-cat-sel { padding: .25rem .4rem; font-size: .78rem; }
+
 /* ── Undo toast ─────────────────────────────────────────────── */
 #undo-toast {
   position: fixed;

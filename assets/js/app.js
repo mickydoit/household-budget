@@ -1,8 +1,9 @@
 // SPA router + event wiring. Hash-based routing.
 
-import { store } from './store.js?v=7';
-import { currentMonth, prevMonth, nextMonth, getDashboard, getTransactionsView, getBudgetView, getGoalsView, toMonthly, fromMonthly } from './compute.js?v=7';
-import { renderDashboard, renderTransactions, renderBudget, renderGoals, renderSettings } from './views.js?v=7';
+import { store } from './store.js?v=8';
+import { currentMonth, prevMonth, nextMonth, getDashboard, getTransactionsView, getBudgetView, getGoalsView, toMonthly, fromMonthly } from './compute.js?v=8';
+import { renderDashboard, renderTransactions, renderBudget, renderGoals, renderSettings } from './views.js?v=8';
+import { processCSV } from './importer.js?v=8';
 
 const root = document.getElementById('root');
 const PASSWORD = (window.BUDGET_CONFIG || {}).ADMIN_PASSWORD || 'budget2026';
@@ -19,6 +20,7 @@ let addFundsId   = null;
 let addingCat    = false;
 let addingAcct   = false;
 let addingIncome = false;
+let importRows   = null;       // parsed CSV rows awaiting review, or null
 let flash        = null;
 let lastPaintedRoute = null;
 let lastRenderedBody = null;
@@ -163,7 +165,7 @@ async function render() {
   let body;
   switch (route) {
     case '/transactions':
-      body = renderTransactions(getTransactionsView(data, month), addingTx, txType);
+      body = renderTransactions(getTransactionsView(data, month), addingTx, txType, importRows);
       break;
     case '/budget':
       body = renderBudget(getBudgetView(data, month, period));
@@ -325,6 +327,10 @@ root.addEventListener('submit', (e) => {
     );
     addingIncome = false;
 
+  } else if (action === 'confirm-import') {
+    // handled via click delegation below
+    return;
+
   } else if (action === 'admin-login') {
     if (String(fd.get('password')) === PASSWORD) {
       isAdmin = true;
@@ -471,6 +477,58 @@ root.addEventListener('click', (e) => {
       () => store.deleteIncomeSource(id),
       () => src ? () => store.addIncomeSource({ name: src.name, person: src.person, amount: src.amount, frequency: src.frequency, color: src.color }) : null
     );
+
+  } else if (action === 'cancel-import') {
+    importRows = null;
+    render();
+
+  } else if (action === 'confirm-import') {
+    const rows = (importRows || []).filter(r => r.include);
+    if (!rows.length) return;
+    importRows = null;
+    run(
+      async () => {
+        const ids = [];
+        for (const r of rows) {
+          const result = await store.addTransaction({ amount: r.amount, description: r.description, categoryId: r.categoryId, type: r.type, date: r.date });
+          const id = rowId(result);
+          if (id) ids.push(id);
+        }
+        return ids;
+      },
+      (ids) => ids?.length
+        ? () => Promise.all(ids.map(id => store.deleteTransaction(id)))
+        : null
+    );
+  }
+});
+
+// ── Change events (file input, per-row import controls) ───────
+root.addEventListener('change', (e) => {
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const action = el.dataset.action;
+
+  if (action === 'import-csv') {
+    const file = el.files && el.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const rows = processCSV(ev.target.result, lastData?.categories || []);
+      if (!rows) { window.alert('Could not parse this CSV — make sure it has Date, Amount and Description columns.'); return; }
+      importRows = rows;
+      render();
+    };
+    reader.readAsText(file);
+    el.value = ''; // allow re-selecting same file
+
+  } else if (action === 'set-import-cat' && importRows) {
+    const idx = Number(el.dataset.idx);
+    if (importRows[idx]) { importRows[idx].categoryId = Number(el.value); }
+
+  } else if (action === 'toggle-import-row' && importRows) {
+    const idx = Number(el.dataset.idx);
+    if (importRows[idx]) { importRows[idx].include = el.checked; render(); }
   }
 });
 
@@ -482,6 +540,7 @@ window.addEventListener('hashchange', () => {
   addingCat    = false;
   addingAcct   = false;
   addingIncome = false;
+  importRows   = null;
   render();
 });
 

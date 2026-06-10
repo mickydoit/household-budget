@@ -1,6 +1,6 @@
 // HTML string renderers — pure functions, no DOM mutations.
 
-import { formatMonth, formatDate, prevMonth, nextMonth, fromMonthly, PERIOD_LABELS } from './compute.js?v=7';
+import { formatMonth, formatDate, prevMonth, nextMonth, fromMonthly, PERIOD_LABELS } from './compute.js?v=8';
 
 const cfg = (typeof window !== 'undefined' && window.BUDGET_CONFIG) || {};
 const CUR = cfg.CURRENCY_SYMBOL || 'R';
@@ -247,10 +247,11 @@ export function renderDashboard({ income, expenses, balance, spendBreakdown, bud
 }
 
 // ── Transactions ──────────────────────────────────────────────
-export function renderTransactions({ transactions, categories, month }, addingTx, txType) {
+export function renderTransactions({ transactions, categories, month }, addingTx, txType, importRows = null) {
   const expenseCats = categories.filter(c => c.type === 'expense');
   const incomeCats  = categories.filter(c => c.type === 'income');
   const activeCats  = txType === 'income' ? incomeCats : expenseCats;
+  const allCats     = [...incomeCats, ...expenseCats];
   const today = new Date().toISOString().slice(0, 10);
 
   const addForm = addingTx ? `
@@ -282,8 +283,61 @@ export function renderTransactions({ transactions, categories, month }, addingTx
         <button type="button" data-action="cancel-add-tx">Cancel</button>
       </div>
     </form>
-  </div>` : `
-  <button class="add-btn primary" data-action="toggle-add-tx">+ Add Transaction</button>`;
+  </div>` : '';
+
+  // ── CSV import review table ──
+  const importSection = importRows ? (() => {
+    const included = importRows.filter(r => r.include);
+    const catOptions = (selectedId, type) => allCats
+      .filter(c => c.type === type)
+      .map(c => `<option value="${c.id}" ${c.id === selectedId ? 'selected' : ''}>${esc(c.icon)} ${esc(c.name)}</option>`)
+      .join('');
+
+    const rows = importRows.map((r, i) => `
+      <tr class="import-row${r.include ? '' : ' import-row-skip'}">
+        <td><input type="checkbox" class="import-check" data-action="toggle-import-row" data-idx="${i}" ${r.include ? 'checked' : ''} /></td>
+        <td class="import-date">${esc(r.date)}</td>
+        <td class="import-desc">${esc(r.description)}</td>
+        <td class="import-amt ${r.type === 'income' ? 'income' : 'expense'}">${r.type === 'income' ? '+' : '−'}${fmt(r.amount)}</td>
+        <td>
+          <select class="form-input import-cat-sel" data-action="set-import-cat" data-idx="${i}">
+            <optgroup label="${r.type === 'income' ? 'Income' : 'Expense'}">${catOptions(r.categoryId, r.type)}</optgroup>
+          </select>
+        </td>
+      </tr>`).join('');
+
+    return `
+    <section class="section import-review">
+      <div class="import-header">
+        <div>
+          <h2 class="import-title">Review imported transactions</h2>
+          <p class="hint import-hint">${importRows.length} rows parsed · ${included.length} selected · fix any categories then confirm</p>
+        </div>
+        <div class="import-actions">
+          <button class="primary" data-action="confirm-import" ${included.length === 0 ? 'disabled' : ''}>Import ${included.length}</button>
+          <button data-action="cancel-import">Cancel</button>
+        </div>
+      </div>
+      <div class="card import-table-wrap">
+        <table class="import-table">
+          <thead><tr>
+            <th></th><th>Date</th><th>Description</th><th>Amount</th><th>Category</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </section>`;
+  })() : '';
+
+  // Upload button shown when not adding manually and no import in progress
+  const actionBar = !addingTx && !importRows ? `
+  <div class="tx-action-bar">
+    <button class="add-btn primary" data-action="toggle-add-tx">+ Add Transaction</button>
+    <label class="import-label" title="Import CSV from your bank">
+      ↑ Import CSV
+      <input type="file" accept=".csv,.txt" data-action="import-csv" class="import-file-input" />
+    </label>
+  </div>` : addForm;
 
   const txHtml = transactions.length
     ? transactions.map(t => `
@@ -301,7 +355,8 @@ export function renderTransactions({ transactions, categories, month }, addingTx
   return `
   <h1>Transactions</h1>
   ${monthNav(month)}
-  ${addForm}
+  ${actionBar}
+  ${importSection}
   <section class="section">
     <div class="card tx-list">${txHtml}</div>
   </section>`;
