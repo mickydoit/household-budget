@@ -1,7 +1,7 @@
 // Data layer — dual backend: Supabase (shared) or localStorage (solo/test).
 // Both expose the same interface so the app doesn't care which is live.
 
-import { supabaseEnabled, sbSelect, sbInsert, sbUpsert, sbUpdate, sbDelete } from './supabase.js?v=4';
+import { supabaseEnabled, sbSelect, sbInsert, sbUpsert, sbUpdate, sbDelete } from './supabase.js?v=5';
 
 const DEFAULT_INCOME_SOURCES = [
   { id: 1, name: 'Full Life Psychology', person: 'Bek',     amount: 1500, frequency: 'fortnightly', color: '#8bffec' },
@@ -15,16 +15,32 @@ const DEFAULT_ACCOUNTS = [
 ];
 
 const DEFAULT_CATEGORIES = [
-  { id: 1,  name: 'Salary',        color: '#8bffec', icon: '💼', type: 'income'  },
-  { id: 2,  name: 'Freelance',     color: '#4d7cff', icon: '💻', type: 'income'  },
-  { id: 3,  name: 'Groceries',     color: '#f4ff7b', icon: '🛒', type: 'expense' },
-  { id: 4,  name: 'Eating out',    color: '#ff4b2b', icon: '🍽', type: 'expense' },
-  { id: 5,  name: 'Transport',     color: '#A855F7', icon: '🚗', type: 'expense' },
-  { id: 6,  name: 'Utilities',     color: '#4d7cff', icon: '💡', type: 'expense' },
-  { id: 7,  name: 'Entertainment', color: '#ff4b2b', icon: '🎬', type: 'expense' },
-  { id: 8,  name: 'Health',        color: '#8bffec', icon: '🏥', type: 'expense' },
-  { id: 9,  name: 'Clothing',      color: '#f4ff7b', icon: '👕', type: 'expense' },
-  { id: 10, name: 'Other',         color: '#888888', icon: '📦', type: 'expense' },
+  { id: 1,  name: 'Salary',           color: '#8bffec', icon: '💼', type: 'income'  },
+  { id: 2,  name: 'Freelance',        color: '#4d7cff', icon: '💻', type: 'income'  },
+  { id: 3,  name: 'Groceries',        color: '#f4ff7b', icon: '🛒', type: 'expense' },
+  { id: 4,  name: 'Eating out',       color: '#ff4b2b', icon: '🍽', type: 'expense' },
+  { id: 5,  name: 'Transport',        color: '#A855F7', icon: '🚗', type: 'expense' },
+  { id: 6,  name: 'Utilities',        color: '#4d7cff', icon: '💡', type: 'expense' },
+  { id: 7,  name: 'Entertainment',    color: '#ff4b2b', icon: '🎬', type: 'expense' },
+  { id: 8,  name: 'Health',           color: '#8bffec', icon: '🏥', type: 'expense' },
+  { id: 9,  name: 'Clothing',         color: '#f4ff7b', icon: '👕', type: 'expense' },
+  { id: 10, name: 'Other',            color: '#888888', icon: '📦', type: 'expense' },
+  { id: 11, name: 'Rent',             color: '#ff6b35', icon: '🏠', type: 'expense' },
+  { id: 12, name: 'Water',            color: '#4d7cff', icon: '💧', type: 'expense' },
+  { id: 13, name: 'Electricity',      color: '#f4ff7b', icon: '⚡', type: 'expense' },
+  { id: 14, name: 'Internet',         color: '#8bffec', icon: '🌐', type: 'expense' },
+  { id: 15, name: 'Car Service',      color: '#A855F7', icon: '🔧', type: 'expense' },
+  { id: 16, name: 'Rego',             color: '#ff6b35', icon: '🚘', type: 'expense' },
+  { id: 17, name: 'Scouts Food',      color: '#f4ff7b', icon: '🍱', type: 'expense' },
+  { id: 18, name: 'Spotify',          color: '#22c55e', icon: '🎵', type: 'expense' },
+  { id: 19, name: 'Phone',            color: '#4d7cff', icon: '📱', type: 'expense' },
+  { id: 20, name: 'Fuel',             color: '#ff6b35', icon: '⛽', type: 'expense' },
+  { id: 21, name: 'Spend',            color: '#888888', icon: '💳', type: 'expense' },
+  { id: 22, name: 'Adobe',            color: '#ff4b2b', icon: '🎨', type: 'expense' },
+  { id: 23, name: 'Gym',              color: '#22c55e', icon: '💪', type: 'expense' },
+  { id: 24, name: 'Doctor Visits',    color: '#8bffec', icon: '🏥', type: 'expense' },
+  { id: 25, name: 'Scouts Insurance', color: '#4d7cff', icon: '🛡', type: 'expense' },
+  { id: 26, name: 'Emergency Fund',   color: '#f4ff7b', icon: '🐷', type: 'expense' },
 ];
 
 // ============================================================

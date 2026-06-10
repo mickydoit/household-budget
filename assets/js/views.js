@@ -1,6 +1,6 @@
 // HTML string renderers — pure functions, no DOM mutations.
 
-import { formatMonth, formatDate, prevMonth, nextMonth, fromMonthly, PERIOD_LABELS } from './compute.js?v=4';
+import { formatMonth, formatDate, prevMonth, nextMonth, fromMonthly, PERIOD_LABELS } from './compute.js?v=5';
 
 const cfg = (typeof window !== 'undefined' && window.BUDGET_CONFIG) || {};
 const CUR = cfg.CURRENCY_SYMBOL || 'R';
@@ -69,7 +69,7 @@ const FREQ_SHORT = { weekly: 'wk', fortnightly: '2wk', monthly: 'mo', annual: 'y
 const PERIOD_SHORT = { weekly: 'wk', fortnightly: '2wk', monthly: 'mo', annual: 'yr' };
 
 // ── Dashboard ─────────────────────────────────────────────────
-export function renderDashboard({ income, expenses, balance, spendBreakdown, budgetRows, recent, month, accounts, incomeSources, totalMonthlyExpected, period }) {
+export function renderDashboard({ income, expenses, balance, spendBreakdown, budgetRows, recent, month, accounts, incomeSources, totalMonthlyExpected, goals, period }) {
   _ringCounter = 0;
 
   const maxSpend = spendBreakdown.length ? spendBreakdown[0].amount : 1;
@@ -167,6 +167,18 @@ export function renderDashboard({ income, expenses, balance, spendBreakdown, bud
       </div>`).join('')
     : `<p class="hint">No transactions this month.</p>`;
 
+  // ── Savings goal rings for dashboard ──
+  const goalRingsHtml = goals.length
+    ? goals.map(g => ringChart({
+        pct: g.progress,
+        c1: g.color,
+        c2: '#A855F7',
+        line1: `${Math.round(g.progress * 100)}%`,
+        line2: g.progress >= 1 ? 'done!' : (Number(g.target_amount) > 0 ? fmt(Number(g.target_amount) - Number(g.current_amount)) + ' left' : 'no target'),
+        label: g.name,
+      })).join('')
+    : '';
+
   return `
   <h1>Dashboard</h1>
   ${monthNav(month)}
@@ -180,9 +192,16 @@ export function renderDashboard({ income, expenses, balance, spendBreakdown, bud
     <div class="acct-total">Expected ${esc(PERIOD_LABELS[period] || 'monthly').toLowerCase()} total <strong>${fmt(totalExpectedDisplay)}</strong></div>
   </section>
 
+  ${goals.length ? `
+  <section class="section">
+    <h2>Savings goals</h2>
+    <div class="rings-row rings-row-lg card">${goalRingsHtml}</div>
+    <div class="section-footer"><a href="#/goals" class="view-link">Manage goals →</a></div>
+  </section>` : ''}
+
   <section class="section">
     <h2>Monthly summary</h2>
-    <div class="rings-row card">${summaryRingHtml}</div>
+    <div class="rings-row rings-row-lg card">${summaryRingHtml}</div>
   </section>
 
   <section class="section">

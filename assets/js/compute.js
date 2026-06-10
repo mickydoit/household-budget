@@ -84,10 +84,17 @@ export function getDashboard(data, month, period = 'monthly') {
   }));
   const totalMonthlyExpected = incomeSources.reduce((sum, s) => sum + s.monthlyAmount, 0);
 
+  const goals = (data.savings_goals || []).map(g => ({
+    ...g,
+    progress: Number(g.target_amount) > 0
+      ? Math.min(1, Number(g.current_amount) / Number(g.target_amount))
+      : 0,
+  })).sort((a, b) => b.progress - a.progress);
+
   return {
     income, expenses, balance: income - expenses,
     spendBreakdown, budgetRows, recent, month, accounts,
-    incomeSources, totalMonthlyExpected, period,
+    incomeSources, totalMonthlyExpected, goals, period,
   };
 }
 

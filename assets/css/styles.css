@@ -609,6 +609,12 @@ body[data-route="goals"]  .period-btn.active { color: #fff; }
   width: 110px; height: 110px; overflow: visible;
   display: block;
 }
+.rings-row-lg .ring-svg {
+  width: 140px; height: 140px;
+}
+.rings-row-lg .ring-line1 { font-size: 15px; }
+.rings-row-lg .ring-line2 { font-size: 10px; }
+.rings-row-lg .ring-label { font-size: .8rem; }
 .ring-line1 {
   font-family: 'Inter', sans-serif;
   font-size: 13px; font-weight: 900;
