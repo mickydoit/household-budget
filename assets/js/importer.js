@@ -284,7 +284,126 @@ export function categorise(description, categories) {
   return null;
 }
 
-// ── Image / PDF via Supabase Edge Function ────────────────────
+// ── PDF — client-side extraction via PDF.js (no API key needed) ──
+
+const PDFJS_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174';
+let _pdfjsPromise = null;
+
+function loadPDFJS() {
+  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  if (!_pdfjsPromise) {
+    _pdfjsPromise = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = `${PDFJS_CDN}/pdf.min.js`;
+      s.onload = () => {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = `${PDFJS_CDN}/pdf.worker.min.js`;
+        resolve(window.pdfjsLib);
+      };
+      s.onerror = () => reject(new Error('Could not load PDF.js'));
+      document.head.appendChild(s);
+    });
+  }
+  return _pdfjsPromise;
+}
+
+async function extractPDFLines(file) {
+  const pdfjs = await loadPDFJS();
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjs.getDocument({ data: buf }).promise;
+  const lines = [];
+
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+
+    // Group text items by Y coordinate (± 2pt = same line)
+    const rows = {};
+    for (const item of content.items) {
+      if (!item.str?.trim()) continue;
+      const y = Math.round(item.transform[5] / 2) * 2;
+      if (!rows[y]) rows[y] = [];
+      rows[y].push({ x: item.transform[4], str: item.str });
+    }
+
+    // Reconstruct lines: sort rows top-to-bottom, items left-to-right
+    Object.keys(rows)
+      .map(Number)
+      .sort((a, b) => b - a)
+      .forEach(y => {
+        const line = rows[y]
+          .sort((a, b) => a.x - b.x)
+          .map(i => i.str)
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (line) lines.push(line);
+      });
+  }
+  return lines;
+}
+
+const AMT_RE = /\$?\d{1,3}(?:,\d{3})*\.\d{2}(?:\s*(?:CR|DR))?/gi;
+const DATE_RE = /\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4}[\/\-]\d{2}[\/\-]\d{2})\b/i;
+
+function parsePDFLines(lines, categories) {
+  const results = [];
+  // Skip lines that look like headers
+  const HEADER_RE = /\b(date|description|narrative|transaction|debit|credit|balance|amount|opening|closing|statement|account)\b/i;
+
+  for (const line of lines) {
+    const dateM = line.match(DATE_RE);
+    if (!dateM) continue;
+
+    const date = parseDate(dateM[0]);
+    if (!date) continue;
+
+    // Skip header rows
+    if (HEADER_RE.test(line) && !/\d{2}.\d{2}/.test(line.replace(dateM[0], ''))) continue;
+
+    const amtMatches = [...line.matchAll(AMT_RE)];
+    if (!amtMatches.length) continue;
+
+    // With ≥2 amounts the last is usually a running balance — use second-to-last.
+    // With 1 amount, use it directly.
+    const txMatch = amtMatches.length >= 2
+      ? amtMatches[amtMatches.length - 2]
+      : amtMatches[0];
+
+    const raw = txMatch[0];
+    const amount = parseAmount(raw);
+    if (!amount || amount <= 0) continue;
+
+    // CR = income, DR or no suffix = expense
+    const type = /CR/i.test(raw) ? 'income' : 'expense';
+
+    // Description: text between the date and the first amount
+    const dateEnd  = (dateM.index ?? 0) + dateM[0].length;
+    const firstAmt = amtMatches[0].index ?? line.length;
+    let desc = line.slice(dateEnd, firstAmt).replace(/\s+/g, ' ').trim();
+    if (!desc || desc.length < 2) {
+      // Fallback: everything after the date minus all amounts
+      desc = line.slice(dateEnd).replace(AMT_RE, '').replace(/\s+/g, ' ').trim();
+    }
+    if (!desc || desc.length < 2) continue;
+
+    results.push({
+      date,
+      description: desc,
+      amount,
+      type,
+      categoryId: categorise(desc, categories),
+      include: true,
+    });
+  }
+  return results.length ? results : null;
+}
+
+export async function processPDF(file, categories) {
+  const lines = await extractPDFLines(file);
+  return parsePDFLines(lines, categories);
+}
+
+// ── Images via Supabase Edge Function (requires ANTHROPIC_API_KEY) ──
 
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
@@ -295,19 +414,17 @@ function fileToBase64(file) {
   });
 }
 
-export async function processFile(file, categories) {
+export async function processImage(file, categories) {
   const cfg = (typeof window !== 'undefined' && window.BUDGET_CONFIG) || {};
   const supabaseUrl = cfg.SUPABASE_URL;
   const supabaseKey = cfg.SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseKey) {
-    throw new Error('Image/PDF import requires Supabase to be configured in config.js.');
+    throw new Error('Image import requires Supabase to be configured in config.js.');
   }
 
-  const [base64, mediaType] = await Promise.all([
-    fileToBase64(file),
-    Promise.resolve(file.type || 'application/octet-stream'),
-  ]);
+  const base64   = await fileToBase64(file);
+  const mediaType = file.type || 'image/jpeg';
 
   const res = await fetch(`${supabaseUrl}/functions/v1/parse-statement`, {
     method: 'POST',

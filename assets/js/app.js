@@ -1,9 +1,9 @@
 // SPA router + event wiring. Hash-based routing.
 
-import { store } from './store.js?v=9';
-import { currentMonth, prevMonth, nextMonth, getDashboard, getTransactionsView, getBudgetView, getGoalsView, toMonthly, fromMonthly } from './compute.js?v=9';
-import { renderDashboard, renderTransactions, renderBudget, renderGoals, renderSettings } from './views.js?v=9';
-import { processCSV, processFile } from './importer.js?v=9';
+import { store } from './store.js?v=10';
+import { currentMonth, prevMonth, nextMonth, getDashboard, getTransactionsView, getBudgetView, getGoalsView, toMonthly, fromMonthly } from './compute.js?v=10';
+import { renderDashboard, renderTransactions, renderBudget, renderGoals, renderSettings } from './views.js?v=10';
+import { processCSV, processPDF, processImage } from './importer.js?v=10';
 
 const root = document.getElementById('root');
 const PASSWORD = (window.BUDGET_CONFIG || {}).ADMIN_PASSWORD || 'budget2026';
@@ -515,7 +515,8 @@ root.addEventListener('change', (e) => {
     if (!file) return;
     el.value = ''; // allow re-selecting same file
 
-    const isCSV = file.type === 'text/csv' || file.type === 'text/plain' || file.name.endsWith('.csv') || file.name.endsWith('.txt');
+    const isCSV  = file.type === 'text/csv' || file.type === 'text/plain' || file.name.endsWith('.csv') || file.name.endsWith('.txt');
+    const isPDF  = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 
     if (isCSV) {
       const reader = new FileReader();
@@ -526,20 +527,38 @@ root.addEventListener('change', (e) => {
         render();
       };
       reader.readAsText(file);
-    } else {
-      // Image or PDF — send to Supabase Edge Function for AI parsing
+
+    } else if (isPDF) {
+      // PDFs are parsed entirely in the browser — no API key needed
       importLoading = true;
       render();
-      processFile(file, lastData?.categories || [])
+      processPDF(file, lastData?.categories || [])
         .then(rows => {
           importLoading = false;
-          if (!rows) { window.alert('No transactions found in this document. Try a clearer image or a digital (not scanned) PDF.'); render(); return; }
+          if (!rows) { window.alert('No transactions found in this PDF. Make sure it is a digital (not scanned) bank statement.'); render(); return; }
           importRows = rows;
           render();
         })
         .catch(err => {
           importLoading = false;
-          window.alert('Could not parse document: ' + err.message);
+          window.alert('Could not read PDF: ' + err.message);
+          render();
+        });
+
+    } else {
+      // Image — send to Supabase Edge Function (requires ANTHROPIC_API_KEY secret)
+      importLoading = true;
+      render();
+      processImage(file, lastData?.categories || [])
+        .then(rows => {
+          importLoading = false;
+          if (!rows) { window.alert('No transactions found in this image. Try a clearer photo or use a PDF/CSV instead.'); render(); return; }
+          importRows = rows;
+          render();
+        })
+        .catch(err => {
+          importLoading = false;
+          window.alert('Could not parse image: ' + err.message);
           render();
         });
     }
