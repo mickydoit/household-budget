@@ -284,7 +284,57 @@ export function categorise(description, categories) {
   return null;
 }
 
-// ── Main entry point ──────────────────────────────────────────
+// ── Image / PDF via Supabase Edge Function ────────────────────
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+export async function processFile(file, categories) {
+  const cfg = (typeof window !== 'undefined' && window.BUDGET_CONFIG) || {};
+  const supabaseUrl = cfg.SUPABASE_URL;
+  const supabaseKey = cfg.SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('Image/PDF import requires Supabase to be configured in config.js.');
+  }
+
+  const [base64, mediaType] = await Promise.all([
+    fileToBase64(file),
+    Promise.resolve(file.type || 'application/octet-stream'),
+  ]);
+
+  const res = await fetch(`${supabaseUrl}/functions/v1/parse-statement`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${supabaseKey}`,
+    },
+    body: JSON.stringify({ fileData: base64, mediaType }),
+  });
+
+  const data = await res.json();
+  if (!res.ok || data.error) throw new Error(data.error || `Parse failed (${res.status})`);
+  if (!data.rows?.length) return null;
+
+  return data.rows
+    .map(r => ({
+      date:        String(r.date || ''),
+      description: String(r.description || ''),
+      amount:      Math.abs(Number(r.amount)) || 0,
+      type:        r.type === 'income' ? 'income' : 'expense',
+      categoryId:  categorise(String(r.description || ''), categories),
+      include:     true,
+    }))
+    .filter(r => r.amount > 0 && r.date);
+}
+
+// ── Main entry point (CSV) ────────────────────────────────────
 
 export function processCSV(text, categories) {
   const parsed = parseCSV(text);

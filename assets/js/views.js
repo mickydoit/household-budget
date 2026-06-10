@@ -1,6 +1,6 @@
 // HTML string renderers — pure functions, no DOM mutations.
 
-import { formatMonth, formatDate, prevMonth, nextMonth, fromMonthly, PERIOD_LABELS } from './compute.js?v=8';
+import { formatMonth, formatDate, prevMonth, nextMonth, fromMonthly, PERIOD_LABELS } from './compute.js?v=9';
 
 const cfg = (typeof window !== 'undefined' && window.BUDGET_CONFIG) || {};
 const CUR = cfg.CURRENCY_SYMBOL || 'R';
@@ -247,7 +247,7 @@ export function renderDashboard({ income, expenses, balance, spendBreakdown, bud
 }
 
 // ── Transactions ──────────────────────────────────────────────
-export function renderTransactions({ transactions, categories, month }, addingTx, txType, importRows = null) {
+export function renderTransactions({ transactions, categories, month }, addingTx, txType, importRows = null, importLoading = false) {
   const expenseCats = categories.filter(c => c.type === 'expense');
   const incomeCats  = categories.filter(c => c.type === 'income');
   const activeCats  = txType === 'income' ? incomeCats : expenseCats;
@@ -285,8 +285,18 @@ export function renderTransactions({ transactions, categories, month }, addingTx
     </form>
   </div>` : '';
 
+  // ── Loading state while AI parses the document ──
+  const loadingSection = importLoading ? `
+  <section class="section import-review">
+    <div class="import-loading">
+      <div class="import-spinner"></div>
+      <p class="import-loading-text">Analysing your statement…</p>
+      <p class="hint">Claude is reading the document and extracting transactions.</p>
+    </div>
+  </section>` : '';
+
   // ── CSV import review table ──
-  const importSection = importRows ? (() => {
+  const importSection = (!importLoading && importRows) ? (() => {
     const included = importRows.filter(r => r.include);
     const catOptions = (selectedId, type) => allCats
       .filter(c => c.type === type)
@@ -333,9 +343,9 @@ export function renderTransactions({ transactions, categories, month }, addingTx
   const actionBar = !addingTx && !importRows ? `
   <div class="tx-action-bar">
     <button class="add-btn primary" data-action="toggle-add-tx">+ Add Transaction</button>
-    <label class="import-label" title="Import CSV from your bank">
-      ↑ Import CSV
-      <input type="file" accept=".csv,.txt" data-action="import-csv" class="import-file-input" />
+    <label class="import-label" title="Import CSV, image or PDF from your bank">
+      ↑ Import statement
+      <input type="file" accept=".csv,.txt,image/*,.pdf,application/pdf" data-action="import-csv" class="import-file-input" />
     </label>
   </div>` : addForm;
 
@@ -356,6 +366,7 @@ export function renderTransactions({ transactions, categories, month }, addingTx
   <h1>Transactions</h1>
   ${monthNav(month)}
   ${actionBar}
+  ${loadingSection}
   ${importSection}
   <section class="section">
     <div class="card tx-list">${txHtml}</div>

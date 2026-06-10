@@ -1,9 +1,9 @@
 // SPA router + event wiring. Hash-based routing.
 
-import { store } from './store.js?v=8';
-import { currentMonth, prevMonth, nextMonth, getDashboard, getTransactionsView, getBudgetView, getGoalsView, toMonthly, fromMonthly } from './compute.js?v=8';
-import { renderDashboard, renderTransactions, renderBudget, renderGoals, renderSettings } from './views.js?v=8';
-import { processCSV } from './importer.js?v=8';
+import { store } from './store.js?v=9';
+import { currentMonth, prevMonth, nextMonth, getDashboard, getTransactionsView, getBudgetView, getGoalsView, toMonthly, fromMonthly } from './compute.js?v=9';
+import { renderDashboard, renderTransactions, renderBudget, renderGoals, renderSettings } from './views.js?v=9';
+import { processCSV, processFile } from './importer.js?v=9';
 
 const root = document.getElementById('root');
 const PASSWORD = (window.BUDGET_CONFIG || {}).ADMIN_PASSWORD || 'budget2026';
@@ -20,7 +20,8 @@ let addFundsId   = null;
 let addingCat    = false;
 let addingAcct   = false;
 let addingIncome = false;
-let importRows   = null;       // parsed CSV rows awaiting review, or null
+let importRows    = null;       // parsed rows awaiting review, or null
+let importLoading = false;     // true while AI is processing image/PDF
 let flash        = null;
 let lastPaintedRoute = null;
 let lastRenderedBody = null;
@@ -165,7 +166,7 @@ async function render() {
   let body;
   switch (route) {
     case '/transactions':
-      body = renderTransactions(getTransactionsView(data, month), addingTx, txType, importRows);
+      body = renderTransactions(getTransactionsView(data, month), addingTx, txType, importRows, importLoading);
       break;
     case '/budget':
       body = renderBudget(getBudgetView(data, month, period));
@@ -512,15 +513,36 @@ root.addEventListener('change', (e) => {
   if (action === 'import-csv') {
     const file = el.files && el.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const rows = processCSV(ev.target.result, lastData?.categories || []);
-      if (!rows) { window.alert('Could not parse this CSV — make sure it has Date, Amount and Description columns.'); return; }
-      importRows = rows;
-      render();
-    };
-    reader.readAsText(file);
     el.value = ''; // allow re-selecting same file
+
+    const isCSV = file.type === 'text/csv' || file.type === 'text/plain' || file.name.endsWith('.csv') || file.name.endsWith('.txt');
+
+    if (isCSV) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const rows = processCSV(ev.target.result, lastData?.categories || []);
+        if (!rows) { window.alert('Could not parse this CSV — make sure it has Date, Amount and Description columns.'); return; }
+        importRows = rows;
+        render();
+      };
+      reader.readAsText(file);
+    } else {
+      // Image or PDF — send to Supabase Edge Function for AI parsing
+      importLoading = true;
+      render();
+      processFile(file, lastData?.categories || [])
+        .then(rows => {
+          importLoading = false;
+          if (!rows) { window.alert('No transactions found in this document. Try a clearer image or a digital (not scanned) PDF.'); render(); return; }
+          importRows = rows;
+          render();
+        })
+        .catch(err => {
+          importLoading = false;
+          window.alert('Could not parse document: ' + err.message);
+          render();
+        });
+    }
 
   } else if (action === 'set-import-cat' && importRows) {
     const idx = Number(el.dataset.idx);
@@ -540,7 +562,8 @@ window.addEventListener('hashchange', () => {
   addingCat    = false;
   addingAcct   = false;
   addingIncome = false;
-  importRows   = null;
+  importRows    = null;
+  importLoading = false;
   render();
 });
 

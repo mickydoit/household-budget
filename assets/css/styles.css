@@ -766,6 +766,23 @@ body[data-route="goals"]  .period-btn.active { color: #fff; }
 .import-amt   { white-space: nowrap; font-weight: 700; font-variant-numeric: tabular-nums; }
 .import-cat-sel { padding: .25rem .4rem; font-size: .78rem; }
 
+.import-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .6rem;
+  padding: 2rem 1rem;
+}
+.import-loading-text { font-weight: 600; margin: 0; }
+.import-spinner {
+  width: 36px; height: 36px;
+  border: 3px solid var(--border-em);
+  border-top-color: var(--h1-color);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
 /* ── Undo toast ─────────────────────────────────────────────── */
 #undo-toast {
   position: fixed;
