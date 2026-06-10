@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#111111" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>Household Budget</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="assets/css/styles.css?v=2" />
+  <script>
+    (function () {
+      var V = '2';
+      try {
+        if (localStorage.getItem('_budgetv') !== V) {
+          localStorage.setItem('_budgetv', V);
+          if (location.search.indexOf('_budgetv=') === -1) {
+            location.replace(location.pathname + '?_budgetv=' + V + location.hash);
+          }
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <script src="config.js"></script>
+</head>
+<body data-route="dashboard" data-theme="dark">
+  <div id="splash">
+    <div class="splash-brand">
+      <div class="splash-logo-wrap">
+        <span class="splash-logo-icon">₿</span>
+        <span class="splash-logo-text">Household<br/>Budget</span>
+      </div>
+    </div>
+    <div class="splash-bar-track">
+      <div class="splash-bar"></div>
+    </div>
+  </div>
+  <div id="root"><main class="container"><p class="hint">Loading…</p></main></div>
+  <script type="module" src="assets/js/app.js?v=2"></script>
+</body>
+</html>
