@@ -1,7 +1,13 @@
 // Data layer — dual backend: Supabase (shared) or localStorage (solo/test).
 // Both expose the same interface so the app doesn't care which is live.
 
-import { supabaseEnabled, sbSelect, sbInsert, sbUpsert, sbUpdate, sbDelete } from './supabase.js?v=3';
+import { supabaseEnabled, sbSelect, sbInsert, sbUpsert, sbUpdate, sbDelete } from './supabase.js?v=4';
+
+const DEFAULT_INCOME_SOURCES = [
+  { id: 1, name: 'Full Life Psychology', person: 'Bek',     amount: 1500, frequency: 'fortnightly', color: '#8bffec' },
+  { id: 2, name: 'Queensland Health',    person: 'Bek',     amount: 1313, frequency: 'fortnightly', color: '#4d7cff' },
+  { id: 3, name: 'CV Global',           person: 'Michael', amount: 1978, frequency: 'fortnightly', color: '#A855F7' },
+];
 
 const DEFAULT_ACCOUNTS = [
   { id: 1, name: 'Cheque',  balance: 0, color1: '#8bffec', color2: '#4d7cff', target: null },
@@ -28,16 +34,18 @@ const LS_KEY = 'budget_state_v1';
 
 function freshLocalState() {
   return {
-    bank_accounts:  DEFAULT_ACCOUNTS.map(a => ({ ...a })),
-    categories:     DEFAULT_CATEGORIES.map(c => ({ ...c })),
-    transactions:   [],
-    budget_targets: [],
-    savings_goals:  [],
-    nextTxId:       1,
-    nextTargetId:   1,
-    nextGoalId:     1,
-    nextCatId:      DEFAULT_CATEGORIES.length + 1,
-    nextAcctId:     DEFAULT_ACCOUNTS.length + 1,
+    bank_accounts:   DEFAULT_ACCOUNTS.map(a => ({ ...a })),
+    categories:      DEFAULT_CATEGORIES.map(c => ({ ...c })),
+    transactions:    [],
+    budget_targets:  [],
+    savings_goals:   [],
+    income_sources:  DEFAULT_INCOME_SOURCES.map(s => ({ ...s })),
+    nextTxId:        1,
+    nextTargetId:    1,
+    nextGoalId:      1,
+    nextCatId:       DEFAULT_CATEGORIES.length + 1,
+    nextAcctId:      DEFAULT_ACCOUNTS.length + 1,
+    nextIncomeId:    DEFAULT_INCOME_SOURCES.length + 1,
   };
 }
 
@@ -57,7 +65,14 @@ const localBackend = {
   mode: 'local',
   async loadAll() {
     const s = lsLoad();
-    return { bank_accounts: s.bank_accounts || DEFAULT_ACCOUNTS.map(a => ({ ...a })), categories: s.categories, transactions: s.transactions, budget_targets: s.budget_targets, savings_goals: s.savings_goals };
+    return {
+      bank_accounts:  s.bank_accounts  || DEFAULT_ACCOUNTS.map(a => ({ ...a })),
+      categories:     s.categories,
+      transactions:   s.transactions,
+      budget_targets: s.budget_targets,
+      savings_goals:  s.savings_goals,
+      income_sources: s.income_sources || DEFAULT_INCOME_SOURCES.map(x => ({ ...x })),
+    };
   },
   async addTransaction({ amount, description, categoryId, type, date }) {
     const s = lsLoad();
@@ -135,6 +150,18 @@ const localBackend = {
     s.nextTargetId = 1;
     lsSave(s);
   },
+  async addIncomeSource({ name, person, amount, frequency, color }) {
+    const s = lsLoad();
+    if (!s.income_sources) s.income_sources = DEFAULT_INCOME_SOURCES.map(x => ({ ...x }));
+    if (!s.nextIncomeId) s.nextIncomeId = (s.income_sources.reduce((m, x) => Math.max(m, x.id), 0)) + 1;
+    s.income_sources.push({ id: s.nextIncomeId++, name, person: person || '', amount: Number(amount), frequency: frequency || 'fortnightly', color: color || '#8bffec' });
+    lsSave(s);
+  },
+  async deleteIncomeSource(id) {
+    const s = lsLoad();
+    s.income_sources = (s.income_sources || []).filter(x => x.id !== id);
+    lsSave(s);
+  },
 };
 
 // ============================================================
@@ -143,12 +170,13 @@ const localBackend = {
 const supabaseBackend = {
   mode: 'supabase',
   async loadAll() {
-    const [bank_accounts, categories, transactions, budget_targets, savings_goals] = await Promise.all([
+    const [bank_accounts, categories, transactions, budget_targets, savings_goals, income_sources] = await Promise.all([
       sbSelect('bank_accounts',  'select=*&order=created_at.asc'),
       sbSelect('categories',     'select=*&order=type.asc,id.asc'),
       sbSelect('transactions',   'select=*&order=date.desc,id.desc'),
       sbSelect('budget_targets', 'select=*'),
       sbSelect('savings_goals',  'select=*&order=created_at.asc'),
+      sbSelect('income_sources', 'select=*&order=id.asc'),
     ]);
     return {
       bank_accounts:  bank_accounts  || [],
@@ -156,6 +184,7 @@ const supabaseBackend = {
       transactions:   transactions   || [],
       budget_targets: budget_targets || [],
       savings_goals:  savings_goals  || [],
+      income_sources: income_sources || [],
     };
   },
   async addTransaction({ amount, description, categoryId, type, date }) {
@@ -199,6 +228,12 @@ const supabaseBackend = {
   async clearAllTransactions() {
     await sbDelete('transactions',   'id=gt.0');
     await sbDelete('budget_targets', 'id=gt.0');
+  },
+  async addIncomeSource({ name, person, amount, frequency, color }) {
+    await sbInsert('income_sources', { name, person: person || '', amount: Number(amount), frequency: frequency || 'fortnightly', color: color || '#8bffec' });
+  },
+  async deleteIncomeSource(id) {
+    await sbDelete('income_sources', `id=eq.${id}`);
   },
 };
 

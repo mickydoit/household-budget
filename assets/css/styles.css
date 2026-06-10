@@ -537,6 +537,64 @@ body[data-route="goals"] .type-btn.active { color: #fff; }
 
 .danger-zone { border-color: rgba(232,53,26,.25); }
 
+/* ---- PERIOD TOGGLE ---- */
+.period-toggle {
+  display: flex; border-radius: 999px; overflow: hidden;
+  border: 1px solid var(--border-em); width: fit-content; flex-shrink: 0;
+}
+.period-btn {
+  border: none; border-radius: 0; min-height: unset;
+  padding: .32rem .72rem; font-size: .75rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .05em;
+  background: none; color: var(--text-2);
+  transition: background .12s, color .12s;
+}
+.period-btn.active { background: var(--h1-color); color: #111; }
+body[data-route="budget"] .period-btn.active,
+body[data-route="goals"]  .period-btn.active { color: #fff; }
+
+.section-header-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .75rem; margin-bottom: .65rem; flex-wrap: wrap;
+}
+.section-header-row h2 { margin-bottom: 0; }
+
+/* ---- BUDGET PAGE HEADER ---- */
+.budget-page-header { margin-bottom: .5rem; }
+.budget-period-row {
+  display: flex; align-items: center; justify-content: center; gap: .65rem;
+  margin-bottom: 1rem; flex-wrap: wrap;
+}
+.budget-period-tag {
+  font-size: .7em; font-weight: 700; color: var(--text-3); letter-spacing: .02em;
+}
+
+/* ---- INCOME SOURCES ---- */
+.income-list { padding: 0; overflow: hidden; }
+.income-row {
+  display: flex; align-items: center; gap: .6rem;
+  padding: .65rem 1.1rem; border-bottom: 1px solid var(--border);
+}
+.income-row:last-child { border-bottom: none; }
+.income-dot {
+  width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+}
+.income-name { flex: 1; font-weight: 600; font-size: .9rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.income-person {
+  font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
+  padding: .12rem .45rem; border-radius: 999px; flex-shrink: 0;
+  background: var(--accent-dim); color: var(--accent);
+}
+.income-amount {
+  font-family: var(--font); font-weight: 800; font-size: .92rem;
+  color: var(--text); flex-shrink: 0; margin-left: .2rem;
+}
+.income-freq { font-size: .72em; color: var(--text-3); }
+.income-settings-amt {
+  font-family: var(--font); font-weight: 800; font-size: .88rem;
+  color: var(--text); flex-shrink: 0;
+}
+
 /* ---- RING CHARTS ---- */
 .rings-row {
   display: flex; flex-wrap: wrap; gap: .75rem 1.25rem;

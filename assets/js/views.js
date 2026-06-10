@@ -1,6 +1,6 @@
 // HTML string renderers — pure functions, no DOM mutations.
 
-import { formatMonth, formatDate, prevMonth, nextMonth } from './compute.js?v=3';
+import { formatMonth, formatDate, prevMonth, nextMonth, fromMonthly, PERIOD_LABELS } from './compute.js?v=4';
 
 const cfg = (typeof window !== 'undefined' && window.BUDGET_CONFIG) || {};
 const CUR = cfg.CURRENCY_SYMBOL || 'R';
@@ -17,6 +17,18 @@ function monthNav(month) {
     <button class="month-btn" data-action="prev-month" aria-label="Previous month">&#8249;</button>
     <span class="month-label">${esc(formatMonth(month))}</span>
     <button class="month-btn" data-action="next-month" aria-label="Next month">&#8250;</button>
+  </div>`;
+}
+
+function periodToggle(current) {
+  const opts = [
+    { key: 'weekly',      label: 'W'  },
+    { key: 'fortnightly', label: '2W' },
+    { key: 'monthly',     label: 'M'  },
+    { key: 'annual',      label: 'Y'  },
+  ];
+  return `<div class="period-toggle" role="group" aria-label="Budget period">
+    ${opts.map(o => `<button type="button" class="period-btn${current === o.key ? ' active' : ''}" data-action="set-period" data-period="${o.key}" title="${esc(PERIOD_LABELS[o.key])}">${o.label}</button>`).join('')}
   </div>`;
 }
 
@@ -53,11 +65,31 @@ function ringChart({ pct, c1, c2, line1, line2, label }) {
   </div>`;
 }
 
+const FREQ_SHORT = { weekly: 'wk', fortnightly: '2wk', monthly: 'mo', annual: 'yr' };
+const PERIOD_SHORT = { weekly: 'wk', fortnightly: '2wk', monthly: 'mo', annual: 'yr' };
+
 // ── Dashboard ─────────────────────────────────────────────────
-export function renderDashboard({ income, expenses, balance, spendBreakdown, budgetRows, recent, month, accounts }) {
-  _ringCounter = 0; // reset per render so IDs are stable across re-renders
+export function renderDashboard({ income, expenses, balance, spendBreakdown, budgetRows, recent, month, accounts, incomeSources, totalMonthlyExpected, period }) {
+  _ringCounter = 0;
 
   const maxSpend = spendBreakdown.length ? spendBreakdown[0].amount : 1;
+  const periodShort = PERIOD_SHORT[period] || 'mo';
+
+  // ── Income sources ──
+  const incomeSourcesHtml = incomeSources.length
+    ? incomeSources.map(s => {
+        const displayAmt = fromMonthly(s.monthlyAmount, period);
+        return `
+        <div class="income-row">
+          <span class="income-dot" style="background:${esc(s.color)}"></span>
+          <span class="income-name">${esc(s.name)}</span>
+          <span class="income-person">${esc(s.person)}</span>
+          <span class="income-amount">${fmt(displayAmt)}<span class="income-freq">/${periodShort}</span></span>
+        </div>`;
+      }).join('')
+    : `<p class="hint" style="padding:.75rem 1.1rem">No income sources. Add one in <a href="#/settings">Settings</a>.</p>`;
+
+  const totalExpectedDisplay = fromMonthly(totalMonthlyExpected, period);
 
   // ── Account rings ──
   const totalBalance = accounts.reduce((s, a) => s + Number(a.balance), 0);
@@ -71,9 +103,7 @@ export function renderDashboard({ income, expenses, balance, spendBreakdown, bud
       })).join('')
     : `<p class="hint">No accounts yet. Add one in <a href="#/settings">Settings</a>.</p>`;
 
-  // ── Savings goal rings ──
-  const { goals } = { goals: [] }; // will be passed in future; placeholder for now
-  // Budget mini-rings from budgetRows
+  // ── Budget mini-rings ──
   const budgetRingHtml = budgetRows.length
     ? budgetRows.slice(0, 6).map(row => {
         const pct = Number(row.limit_amount) > 0 ? row.spent / Number(row.limit_amount) : 0;
@@ -89,7 +119,7 @@ export function renderDashboard({ income, expenses, balance, spendBreakdown, bud
       }).join('')
     : '';
 
-  // ── Month totals ring ──
+  // ── Month totals rings ──
   const totalBudget = budgetRows.reduce((s, r) => s + Number(r.limit_amount), 0);
   const budgetPct = totalBudget > 0 ? Math.min(1, expenses / totalBudget) : (expenses > 0 ? 0.5 : 0);
   const summaryRingHtml = ringChart({
@@ -140,6 +170,15 @@ export function renderDashboard({ income, expenses, balance, spendBreakdown, bud
   return `
   <h1>Dashboard</h1>
   ${monthNav(month)}
+
+  <section class="section">
+    <div class="section-header-row">
+      <h2 style="margin:0">Income sources</h2>
+      ${periodToggle(period)}
+    </div>
+    <div class="card income-list">${incomeSourcesHtml}</div>
+    <div class="acct-total">Expected ${esc(PERIOD_LABELS[period] || 'monthly').toLowerCase()} total <strong>${fmt(totalExpectedDisplay)}</strong></div>
+  </section>
 
   <section class="section">
     <h2>Monthly summary</h2>
@@ -245,11 +284,15 @@ export function renderTransactions({ transactions, categories, month }, addingTx
 }
 
 // ── Budget ────────────────────────────────────────────────────
-export function renderBudget({ rows, month }) {
+export function renderBudget({ rows, month, period = 'monthly' }) {
+  const periodShort = PERIOD_SHORT[period] || 'mo';
+
   const rowsHtml = rows.map(({ category, target, spent }) => {
-    const limit = target ? Number(target.limit_amount) : null;
-    const pct   = limit ? spent / limit : 0;
-    const over  = limit !== null && spent > limit;
+    const limitMonthly = target ? Number(target.limit_amount) : null;
+    const limitDisplay = limitMonthly !== null ? fromMonthly(limitMonthly, period) : null;
+    const spentDisplay = fromMonthly(spent, period);
+    const pct  = limitMonthly ? spent / limitMonthly : 0;
+    const over = limitMonthly !== null && spent > limitMonthly;
 
     return `
     <div class="budget-row card">
@@ -257,20 +300,20 @@ export function renderBudget({ rows, month }) {
         <span class="spend-icon">${esc(category.icon)}</span>
         <span class="budget-cat-name">${esc(category.name)}</span>
         <div class="budget-row-right">
-          ${limit !== null
-            ? `<span class="budget-spent ${over ? 'over' : ''}">${fmt(spent)}</span><span class="budget-limit-sep">/</span><span class="budget-limit">${fmt(limit)}</span>`
-            : `<span class="budget-spent-only">${spent > 0 ? fmt(spent) : ''}</span>`}
+          ${limitDisplay !== null
+            ? `<span class="budget-spent ${over ? 'over' : ''}">${fmt(spentDisplay)}</span><span class="budget-limit-sep">/</span><span class="budget-limit">${fmt(limitDisplay)}<span class="budget-period-tag">/${periodShort}</span></span>`
+            : `<span class="budget-spent-only">${spentDisplay > 0 ? fmt(spentDisplay) : ''}</span>`}
         </div>
       </div>
-      ${limit !== null ? progressBar(pct, category.color, over) : ''}
+      ${limitMonthly !== null ? progressBar(pct, category.color, over) : ''}
       <div class="budget-row-form">
         <form data-action="set-budget" data-cat-id="${category.id}">
           <input type="hidden" name="categoryId" value="${category.id}" />
           <input type="number" name="limitAmount" min="0" step="0.01"
-            placeholder="${limit !== null ? 'Update limit' : 'Set monthly limit…'}"
-            value="${limit !== null ? limit : ''}"
+            placeholder="${limitDisplay !== null ? `Update limit (${periodShort})` : `Set ${periodShort} limit…`}"
+            value="${limitDisplay !== null ? limitDisplay.toFixed(2) : ''}"
             class="form-input budget-limit-input" />
-          <button type="submit" class="small-btn">${limit !== null ? 'Update' : 'Set'}</button>
+          <button type="submit" class="small-btn">${limitDisplay !== null ? 'Update' : 'Set'}</button>
           ${target ? `<button type="button" class="small-btn danger" data-action="del-budget" data-id="${target.id}">Remove</button>` : ''}
         </form>
       </div>
@@ -279,8 +322,13 @@ export function renderBudget({ rows, month }) {
 
   return `
   <h1>Budget</h1>
-  ${monthNav(month)}
-  <p class="hint page-hint">Set monthly spending limits per category. Targets apply to the selected month.</p>
+  <div class="budget-page-header">
+    ${monthNav(month)}
+    <div class="budget-period-row">
+      <span class="hint">View &amp; set limits per</span>
+      ${periodToggle(period)}
+    </div>
+  </div>
   <section class="section">
     ${rowsHtml || '<p class="hint">No expense categories yet. Add some in Settings.</p>'}
   </section>`;
@@ -363,10 +411,62 @@ export function renderGoals(goals, addingGoal, addFundsId) {
 }
 
 // ── Settings ──────────────────────────────────────────────────
-export function renderSettings(categories, accounts, addingCat, addingAcct, isAdmin, notice, problem) {
-  const noticeBanner = notice ? `<div class="banner ok">${esc(notice)}</div>` : '';
+export function renderSettings(categories, accounts, addingCat, addingAcct, isAdmin, notice, problem, incomeSources = [], addingIncome = false) {
+  const noticeBanner  = notice  ? `<div class="banner ok">${esc(notice)}</div>`  : '';
   const problemBanner = problem ? `<div class="banner err">${esc(problem)}</div>` : '';
 
+  // ── Income sources ──
+  const incomeRows = incomeSources.map(s => `
+    <div class="cat-row">
+      <span class="cat-dot" style="background:${esc(s.color)}"></span>
+      <div style="flex:1;min-width:0">
+        <span class="cat-name">${esc(s.name)}</span>
+      </div>
+      <span class="cat-type income" style="margin-right:.4rem">${esc(s.person)}</span>
+      <span class="income-settings-amt">${fmt(s.amount)}<span class="income-freq">/${esc(FREQ_SHORT[s.frequency] || s.frequency)}</span></span>
+      <button class="icon-btn danger" data-action="del-income" data-id="${s.id}" title="Delete" aria-label="Delete income source">×</button>
+    </div>`).join('');
+
+  const addIncomeForm = addingIncome ? `
+  <div class="add-form card">
+    <form data-action="add-income">
+      <h3 class="form-title">New Income Source</h3>
+      <div class="form-row">
+        <label class="form-label">Name
+          <input type="text" name="name" placeholder="e.g. Salary, Freelance…" required class="form-input" />
+        </label>
+        <label class="form-label">Person
+          <input type="text" name="person" placeholder="e.g. Bek, Michael" class="form-input" />
+        </label>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Amount
+          <input type="number" name="amount" min="0" step="0.01" placeholder="0.00" required class="form-input" />
+        </label>
+        <label class="form-label">Frequency
+          <select name="frequency" class="form-input">
+            <option value="weekly">Weekly</option>
+            <option value="fortnightly" selected>Fortnightly</option>
+            <option value="monthly">Monthly</option>
+            <option value="annual">Annual</option>
+          </select>
+        </label>
+      </div>
+      <label class="form-label">Colour
+        <div class="color-options">
+          ${['#8bffec','#4d7cff','#A855F7','#f4ff7b','#22c55e','#ff6b35','#888888'].map(c =>
+            `<label class="color-opt"><input type="radio" name="color" value="${c}" ${c === '#8bffec' ? 'checked' : ''} /><span class="color-swatch" style="background:${c}"></span></label>`
+          ).join('')}
+        </div>
+      </label>
+      <div class="form-actions">
+        <button type="submit" class="primary">Add Income</button>
+        <button type="button" data-action="cancel-add-income">Cancel</button>
+      </div>
+    </form>
+  </div>` : `<button class="add-btn primary" data-action="toggle-add-income">+ Add Income Source</button>`;
+
+  // ── Categories ──
   const catRows = categories.map(c => `
     <div class="cat-row">
       <span class="cat-icon">${esc(c.icon)}</span>
@@ -408,6 +508,7 @@ export function renderSettings(categories, accounts, addingCat, addingAcct, isAd
     </form>
   </div>` : `<button class="add-btn primary" data-action="toggle-add-cat">+ Add Category</button>`;
 
+  // ── Accounts ──
   const acctRows = accounts.map(a => `
     <div class="cat-row">
       <span class="cat-dot" style="background:linear-gradient(135deg,${esc(a.color1)},${esc(a.color2)})"></span>
@@ -474,6 +575,11 @@ export function renderSettings(categories, accounts, addingCat, addingAcct, isAd
   return `
   <h1>Settings</h1>
   ${noticeBanner}${problemBanner}
+  <section class="section">
+    <h2>Income sources</h2>
+    <div class="card cat-list">${incomeRows || '<p class="hint" style="padding:.75rem 1.1rem">No income sources yet.</p>'}</div>
+    ${addIncomeForm}
+  </section>
   <section class="section">
     <h2>Bank accounts</h2>
     <div class="card cat-list">${acctRows || '<p class="hint" style="padding:.75rem 1.1rem">No accounts yet.</p>'}</div>

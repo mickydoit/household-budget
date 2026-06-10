@@ -1,23 +1,25 @@
 // SPA router + event wiring. Hash-based routing.
 
-import { store } from './store.js?v=3';
-import { currentMonth, prevMonth, nextMonth, getDashboard, getTransactionsView, getBudgetView, getGoalsView } from './compute.js?v=3';
-import { renderDashboard, renderTransactions, renderBudget, renderGoals, renderSettings } from './views.js?v=3';
+import { store } from './store.js?v=4';
+import { currentMonth, prevMonth, nextMonth, getDashboard, getTransactionsView, getBudgetView, getGoalsView, toMonthly, fromMonthly } from './compute.js?v=4';
+import { renderDashboard, renderTransactions, renderBudget, renderGoals, renderSettings } from './views.js?v=4';
 
 const root = document.getElementById('root');
 const PASSWORD = (window.BUDGET_CONFIG || {}).ADMIN_PASSWORD || 'budget2026';
 const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-let isAdmin    = localStorage.getItem('budget_admin') === '1';
-let month      = currentMonth();
-let addingTx   = false;
-let txType     = 'expense';
-let addingGoal = false;
-let addFundsId = null;
-let addingCat  = false;
-let addingAcct = false;
-let flash      = null;
+let isAdmin      = localStorage.getItem('budget_admin') === '1';
+let period       = localStorage.getItem('budget_period') || 'fortnightly';
+let month        = currentMonth();
+let addingTx     = false;
+let txType       = 'expense';
+let addingGoal   = false;
+let addFundsId   = null;
+let addingCat    = false;
+let addingAcct   = false;
+let addingIncome = false;
+let flash        = null;
 let lastPaintedRoute = null;
 let lastRenderedBody = null;
 
@@ -117,18 +119,18 @@ async function render() {
       body = renderTransactions(getTransactionsView(data, month), addingTx, txType);
       break;
     case '/budget':
-      body = renderBudget(getBudgetView(data, month));
+      body = renderBudget(getBudgetView(data, month, period));
       break;
     case '/goals':
       body = renderGoals(getGoalsView(data), addingGoal, addFundsId);
       break;
     case '/settings':
-      body = renderSettings(data.categories, data.bank_accounts || [], addingCat, addingAcct, isAdmin, flash?.notice, flash?.problem);
+      body = renderSettings(data.categories, data.bank_accounts || [], addingCat, addingAcct, isAdmin, flash?.notice, flash?.problem, data.income_sources || [], addingIncome);
       flash = null;
       break;
     case '/':
     default:
-      body = renderDashboard(getDashboard(data, month));
+      body = renderDashboard(getDashboard(data, month, period));
       break;
   }
   paint(route, body);
@@ -166,12 +168,14 @@ root.addEventListener('submit', (e) => {
     addingTx = false;
 
   } else if (action === 'set-budget') {
-    const limitAmount = Number(fd.get('limitAmount'));
-    if (!limitAmount || limitAmount <= 0) { window.alert('Enter a valid limit.'); return; }
+    const limitInPeriod = Number(fd.get('limitAmount'));
+    if (!limitInPeriod || limitInPeriod <= 0) { window.alert('Enter a valid limit.'); return; }
+    // Convert from display period back to monthly for storage
+    const limitMonthly = toMonthly(limitInPeriod, period);
     run(() => store.setBudgetTarget({
       categoryId: Number(fd.get('categoryId')),
       month,
-      limitAmount,
+      limitAmount: limitMonthly,
     }));
 
   } else if (action === 'add-goal') {
@@ -216,6 +220,20 @@ root.addEventListener('submit', (e) => {
       type: fd.get('type') || 'expense',
     }));
     addingCat = false;
+
+  } else if (action === 'add-income') {
+    const name = String(fd.get('name') || '').trim();
+    if (!name) { window.alert('Enter an income source name.'); return; }
+    const amount = Number(fd.get('amount'));
+    if (!amount || amount <= 0) { window.alert('Enter a valid amount.'); return; }
+    run(() => store.addIncomeSource({
+      name,
+      person:    String(fd.get('person') || '').trim(),
+      amount,
+      frequency: fd.get('frequency') || 'fortnightly',
+      color:     fd.get('color') || '#8bffec',
+    }));
+    addingIncome = false;
 
   } else if (action === 'admin-login') {
     if (String(fd.get('password')) === PASSWORD) {
@@ -316,16 +334,34 @@ root.addEventListener('click', (e) => {
   } else if (action === 'clear-all') {
     if (!window.confirm('Delete ALL transactions and budget targets? This cannot be undone.')) return;
     run(async () => { await store.clearAllTransactions(); flash = { notice: 'All transactions cleared.' }; });
+
+  } else if (action === 'set-period') {
+    period = el.dataset.period;
+    localStorage.setItem('budget_period', period);
+    render();
+
+  } else if (action === 'toggle-add-income') {
+    addingIncome = true;
+    render();
+
+  } else if (action === 'cancel-add-income') {
+    addingIncome = false;
+    render();
+
+  } else if (action === 'del-income') {
+    if (!window.confirm('Remove this income source?')) return;
+    run(() => store.deleteIncomeSource(Number(el.dataset.id)));
   }
 });
 
 window.addEventListener('hashchange', () => {
   document.body.classList.remove('nav-open');
-  addingTx = false;
-  addingGoal = false;
-  addFundsId = null;
-  addingCat = false;
-  addingAcct = false;
+  addingTx     = false;
+  addingGoal   = false;
+  addFundsId   = null;
+  addingCat    = false;
+  addingAcct   = false;
+  addingIncome = false;
   render();
 });
 
