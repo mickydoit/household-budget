@@ -802,6 +802,152 @@ body[data-route="goals"]  .period-btn.active { color: #fff; }
   z-index: 9999;
   white-space: nowrap;
 }
+/* ── Budget groups redesign ──────────────────────────────── */
+.budget-income-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem 1rem 0;
+  gap: .75rem;
+}
+.budget-income-ring .ring-wrap {
+  width: 180px;
+  height: 180px;
+}
+.budget-income-ring .ring-svg { width: 180px; height: 180px; }
+.budget-income-ring .ring-line1 { font-size: 12px; }
+.budget-income-ring .ring-label { font-size: .7rem; letter-spacing: .08em; }
+.budget-income-stats {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--bg-2);
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.budget-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: .6rem 1.25rem;
+  gap: .1rem;
+}
+.budget-stat-val {
+  font-family: var(--font);
+  font-weight: 800;
+  font-size: .9rem;
+  color: var(--text);
+}
+.budget-stat-val.over { color: var(--red); }
+.budget-stat-val.ok  { color: #22c55e; }
+.budget-stat-lbl {
+  font-size: .65rem;
+  color: var(--text-3);
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.budget-stat-divider {
+  width: 1px;
+  height: 28px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+.budget-groups-section { padding: .75rem 0 2rem; }
+.bgroup {
+  border-bottom: 1px solid var(--border);
+  padding: .9rem 0 .4rem;
+}
+.bgroup:last-child { border-bottom: none; }
+.bgroup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1rem .4rem;
+}
+.bgroup-name {
+  font-weight: 800;
+  font-size: .82rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.bgroup-meta {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  font-size: .78rem;
+}
+.bgroup-planned { color: var(--text-2); }
+.bgroup-pct {
+  font-weight: 800;
+  font-size: .82rem;
+  color: var(--text);
+  min-width: 3rem;
+  text-align: right;
+}
+.bgroup-pct.high { color: var(--red); }
+.bgroup-bar-track {
+  height: 3px;
+  background: rgba(255,255,255,.06);
+  margin: 0 1rem .5rem;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.bgroup-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width .5s cubic-bezier(.4,0,.2,1);
+}
+.bgroup-bar-fill.over { background: var(--red) !important; }
+.bgroup-hint { padding: .5rem 1rem .25rem 2.2rem; font-size: .78rem; }
+.bcat-item {
+  padding: .45rem 1rem .45rem 2rem;
+  border-top: 1px solid rgba(255,255,255,.03);
+}
+.bcat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: .2rem;
+}
+.bcat-name {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  font-size: .82rem;
+  color: var(--text-2);
+}
+.bcat-amounts {
+  display: flex;
+  align-items: center;
+  gap: .25rem;
+  font-size: .78rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.bcat-sep { color: var(--text-3); }
+.bcat-limit { color: var(--text-3); font-weight: 400; }
+.bcat-bar-track {
+  height: 2px;
+  background: rgba(255,255,255,.05);
+  border-radius: 1px;
+  overflow: hidden;
+  margin-bottom: .3rem;
+}
+.bcat-bar-fill {
+  height: 100%;
+  border-radius: 1px;
+  transition: width .4s ease;
+}
+.bcat-bar-fill.over { background: var(--red) !important; }
+.bcat-form {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  flex-wrap: wrap;
+  margin-top: .1rem;
+}
+
 #undo-toast.visible {
   opacity: 1;
   transform: translateX(-50%) translateY(0);

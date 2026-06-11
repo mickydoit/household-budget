@@ -1,6 +1,6 @@
 // HTML string renderers — pure functions, no DOM mutations.
 
-import { formatMonth, formatDate, prevMonth, nextMonth, fromMonthly, PERIOD_LABELS } from './compute.js?v=11';
+import { formatMonth, formatDate, prevMonth, nextMonth, fromMonthly, PERIOD_LABELS } from './compute.js?v=12';
 
 const cfg = (typeof window !== 'undefined' && window.BUDGET_CONFIG) || {};
 const CUR = cfg.CURRENCY_SYMBOL || 'R';
@@ -374,41 +374,141 @@ export function renderTransactions({ transactions, categories, month }, addingTx
 }
 
 // ── Budget ────────────────────────────────────────────────────
-export function renderBudget({ rows, month, period = 'monthly' }) {
+// Category groups — maps display groups to category names
+const CATEGORY_GROUPS = [
+  { name: 'Housing',       color: '#4d7cff', icon: '🏠', cats: ['Rent', 'Water', 'Electricity', 'Internet'] },
+  { name: 'Food & Dining', color: '#f4ff7b', icon: '🛒', cats: ['Groceries', 'Eating out'] },
+  { name: 'Transport',     color: '#A855F7', icon: '🚗', cats: ['Fuel', 'Car Service', 'Rego', 'Transport'] },
+  { name: 'Bills',         color: '#ff6b35', icon: '📱', cats: ['Phone', 'Spotify', 'Adobe', 'Entertainment'] },
+  { name: 'Health',        color: '#8bffec', icon: '🏥', cats: ['Health', 'Doctor Visits', 'Gym'] },
+  { name: 'Personal',      color: '#ff4b2b', icon: '👤', cats: ['Clothing', 'Spend', 'Other'] },
+  { name: 'Savings',       color: '#22c55e', icon: '💰', cats: ['Emergency Fund'] },
+  { name: 'Scouts',        color: '#fbbf24', icon: '🏕', cats: ['Scouts Food', 'Scouts Insurance'] },
+];
+
+export function renderBudget({ rows, month, period = 'monthly', income = 0, totalMonthlyExpected = 0 }) {
+  _ringCounter = 0;
   const periodShort = PERIOD_SHORT[period] || 'mo';
 
-  const rowsHtml = rows.map(({ category, target, spent }) => {
-    const limitMonthly = target ? Number(target.limit_amount) : null;
-    const limitDisplay = limitMonthly !== null ? fromMonthly(limitMonthly, period) : null;
-    const spentDisplay = fromMonthly(spent, period);
-    const pct  = limitMonthly ? spent / limitMonthly : 0;
-    const over = limitMonthly !== null && spent > limitMonthly;
+  // Use actual income transactions if available, else expected from income sources
+  const incomeMonthly  = income > 0 ? income : totalMonthlyExpected;
+  const incomeDisplay  = fromMonthly(incomeMonthly, period);
+  const totalSpentMo   = rows.reduce((s, r) => s + r.spent, 0);
+  const totalSpentDisp = fromMonthly(totalSpentMo, period);
+  const overallPct     = incomeMonthly > 0 ? Math.min(1, totalSpentMo / incomeMonthly) : 0;
+  const remaining      = incomeDisplay - totalSpentDisp;
 
-    return `
-    <div class="budget-row card">
-      <div class="budget-row-top">
-        <span class="spend-icon">${esc(category.icon)}</span>
-        <span class="budget-cat-name">${esc(category.name)}</span>
-        <div class="budget-row-right">
-          ${limitDisplay !== null
-            ? `<span class="budget-spent ${over ? 'over' : ''}">${fmt(spentDisplay)}</span><span class="budget-limit-sep">/</span><span class="budget-limit">${fmt(limitDisplay)}<span class="budget-period-tag">/${periodShort}</span></span>`
-            : `<span class="budget-spent-only">${spentDisplay > 0 ? fmt(spentDisplay) : ''}</span>`}
+  // Income ring
+  const incomeRingHtml = `
+  <div class="budget-income-section">
+    <div class="budget-income-ring">
+      ${ringChart({ pct: overallPct, c1: '#4d7cff', c2: '#8bffec', line1: fmt(incomeDisplay), label: income > 0 ? 'INCOME' : 'EXPECTED', sublabel: `/${periodShort}` })}
+    </div>
+    <div class="budget-income-stats">
+      <div class="budget-stat"><span class="budget-stat-val">${fmt(totalSpentDisp)}</span><span class="budget-stat-lbl">Spent</span></div>
+      <div class="budget-stat-divider"></div>
+      <div class="budget-stat"><span class="budget-stat-val ${remaining < 0 ? 'over' : 'ok'}">${fmt(Math.abs(remaining))}</span><span class="budget-stat-lbl">${remaining < 0 ? 'Over' : 'Remaining'}</span></div>
+      <div class="budget-stat-divider"></div>
+      <div class="budget-stat"><span class="budget-stat-val">${Math.round(overallPct * 100)}%</span><span class="budget-stat-lbl">Allocated</span></div>
+    </div>
+  </div>`;
+
+  // Build lookup: category name (lowercase) → row data
+  const catRowMap = {};
+  for (const r of rows) catRowMap[r.category.name.toLowerCase()] = r;
+  const groupedCatNames = new Set();
+
+  const groupsHtml = CATEGORY_GROUPS.map(grp => {
+    const grpRows = grp.cats.map(n => catRowMap[n.toLowerCase()]).filter(Boolean);
+    grpRows.forEach(r => groupedCatNames.add(r.category.name.toLowerCase()));
+
+    const grpPlannedMo   = grpRows.reduce((s, r) => s + (r.target ? Number(r.target.limit_amount) : 0), 0);
+    const grpSpentMo     = grpRows.reduce((s, r) => s + r.spent, 0);
+    const grpPlannedDisp = fromMonthly(grpPlannedMo, period);
+    const grpSpentDisp   = fromMonthly(grpSpentMo, period);
+    const pctOfIncome    = incomeMonthly > 0 ? grpSpentMo / incomeMonthly * 100 : 0;
+    const over           = grpPlannedMo > 0 && grpSpentMo > grpPlannedMo;
+
+    const catItemsHtml = grpRows.map(({ category, target, spent }) => {
+      const limitMo   = target ? Number(target.limit_amount) : null;
+      const limitDisp = limitMo !== null ? fromMonthly(limitMo, period) : null;
+      const spentDisp = fromMonthly(spent, period);
+      const catPct    = limitMo ? Math.min(1, spent / limitMo) : 0;
+      const catOver   = limitMo !== null && spent > limitMo;
+      return `
+      <div class="bcat-item">
+        <div class="bcat-row">
+          <span class="bcat-name"><span class="spend-icon">${esc(category.icon)}</span>${esc(category.name)}</span>
+          <div class="bcat-amounts">
+            <span class="${catOver ? 'over' : ''}">${spentDisp > 0 ? fmt(spentDisp) : '—'}</span>
+            ${limitDisp !== null ? `<span class="bcat-sep">/</span><span class="bcat-limit">${fmt(limitDisp)}</span>` : ''}
+          </div>
         </div>
-      </div>
-      ${limitMonthly !== null ? progressBar(pct, category.color, over) : ''}
-      <div class="budget-row-form">
-        <form data-action="set-budget" data-cat-id="${category.id}">
+        ${limitMo !== null ? `<div class="bcat-bar-track"><div class="bcat-bar-fill${catOver ? ' over' : ''}" style="width:${Math.min(100, catPct * 100).toFixed(1)}%;background:${esc(category.color)}"></div></div>` : ''}
+        <form data-action="set-budget" data-cat-id="${category.id}" class="bcat-form">
           <input type="hidden" name="categoryId" value="${category.id}" />
           <input type="number" name="limitAmount" min="0" step="0.01"
-            placeholder="${limitDisplay !== null ? `Update limit (${periodShort})` : `Set ${periodShort} limit…`}"
-            value="${limitDisplay !== null ? limitDisplay.toFixed(2) : ''}"
+            placeholder="${limitDisp !== null ? `Update (${periodShort})` : `Set ${periodShort} limit…`}"
+            value="${limitDisp !== null ? limitDisp.toFixed(2) : ''}"
             class="form-input budget-limit-input" />
-          <button type="submit" class="small-btn">${limitDisplay !== null ? 'Update' : 'Set'}</button>
-          ${target ? `<button type="button" class="small-btn danger" data-action="del-budget" data-id="${target.id}">Remove</button>` : ''}
+          <button type="submit" class="small-btn">${limitDisp !== null ? 'Update' : 'Set'}</button>
+          ${target ? `<button type="button" class="small-btn danger" data-action="del-budget" data-id="${target.id}">✕</button>` : ''}
         </form>
+      </div>`;
+    }).join('');
+
+    // Bar width based on % of income; if no income yet, use % of total planned
+    const barPct = incomeMonthly > 0 ? Math.min(100, pctOfIncome) : (grpPlannedMo > 0 && totalSpentMo > 0 ? Math.min(100, grpSpentMo / totalSpentMo * 100) : 0);
+
+    return `
+    <div class="bgroup">
+      <div class="bgroup-head">
+        <span class="bgroup-name" style="color:${esc(grp.color)}">${grp.icon} ${grp.name}</span>
+        <div class="bgroup-meta">
+          ${grpPlannedMo > 0 ? `<span class="bgroup-planned">${fmt(grpPlannedDisp)}<span class="budget-period-tag">/${periodShort}</span></span>` : ''}
+          <span class="bgroup-pct${pctOfIncome >= 25 ? ' high' : ''}">${pctOfIncome > 0 ? pctOfIncome.toFixed(1) + '%' : grpPlannedMo > 0 ? '0%' : ''}</span>
+        </div>
       </div>
+      <div class="bgroup-bar-track">
+        <div class="bgroup-bar-fill${over ? ' over' : ''}" style="width:${barPct.toFixed(1)}%;background:${esc(grp.color)}"></div>
+      </div>
+      <div class="bgroup-cats">${catItemsHtml || '<p class="hint bgroup-hint">No matching categories</p>'}</div>
     </div>`;
   }).join('');
+
+  // Ungrouped categories (catch-all)
+  const ungroupedRows = rows.filter(r => !groupedCatNames.has(r.category.name.toLowerCase()));
+  const ungroupedHtml = ungroupedRows.length ? `
+  <div class="bgroup">
+    <div class="bgroup-head">
+      <span class="bgroup-name" style="color:var(--text-2)">📦 Other</span>
+    </div>
+    ${ungroupedRows.map(({ category, target, spent }) => {
+      const limitMo   = target ? Number(target.limit_amount) : null;
+      const limitDisp = limitMo !== null ? fromMonthly(limitMo, period) : null;
+      const spentDisp = fromMonthly(spent, period);
+      const catOver   = limitMo !== null && spent > limitMo;
+      return `
+      <div class="bcat-item">
+        <div class="bcat-row">
+          <span class="bcat-name"><span class="spend-icon">${esc(category.icon)}</span>${esc(category.name)}</span>
+          <div class="bcat-amounts">
+            <span class="${catOver ? 'over' : ''}">${spentDisp > 0 ? fmt(spentDisp) : '—'}</span>
+            ${limitDisp !== null ? `<span class="bcat-sep">/</span><span class="bcat-limit">${fmt(limitDisp)}</span>` : ''}
+          </div>
+        </div>
+        <form data-action="set-budget" data-cat-id="${category.id}" class="bcat-form">
+          <input type="hidden" name="categoryId" value="${category.id}" />
+          <input type="number" name="limitAmount" min="0" step="0.01"
+            placeholder="${limitDisp !== null ? `Update (${periodShort})` : `Set ${periodShort} limit…`}"
+            value="${limitDisp !== null ? limitDisp.toFixed(2) : ''}"
+            class="form-input budget-limit-input" />
+          <button type="submit" class="small-btn">${limitDisp !== null ? 'Update' : 'Set'}</button>
+          ${target ? `<button type="button" class="small-btn danger" data-action="del-budget" data-id="${target.id}">✕</button>` : ''}
+        </form>
+      </div>`;
+    }).join('')}
+  </div>` : '';
 
   return `
   <h1>Budget</h1>
@@ -419,8 +519,9 @@ export function renderBudget({ rows, month, period = 'monthly' }) {
       ${periodToggle(period)}
     </div>
   </div>
-  <section class="section">
-    ${rowsHtml || '<p class="hint">No expense categories yet. Add some in Settings.</p>'}
+  ${incomeRingHtml}
+  <section class="section budget-groups-section">
+    ${groupsHtml}${ungroupedHtml}
   </section>`;
 }
 

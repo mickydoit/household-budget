@@ -109,7 +109,15 @@ export function getTransactionsView(data, month) {
 
 export function getBudgetView(data, month, period = 'monthly') {
   const catMap = Object.fromEntries(data.categories.map(c => [c.id, c]));
-  const txns = data.transactions.filter(t => t.date.startsWith(month) && t.type === 'expense');
+  const txnsMonth = data.transactions.filter(t => t.date.startsWith(month));
+  const txns = txnsMonth.filter(t => t.type === 'expense');
+  const income = txnsMonth.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0);
+
+  const incomeSources = (data.income_sources || []).map(s => ({
+    ...s,
+    monthlyAmount: toMonthly(Number(s.amount), s.frequency),
+  }));
+  const totalMonthlyExpected = incomeSources.reduce((sum, s) => sum + s.monthlyAmount, 0);
 
   const spentByCat = {};
   for (const t of txns) spentByCat[t.category_id] = (spentByCat[t.category_id] || 0) + Number(t.amount);
@@ -123,7 +131,7 @@ export function getBudgetView(data, month, period = 'monthly') {
     .map(c => ({ category: c, target: targetMap[c.id] || null, spent: spentByCat[c.id] || 0 }))
     .sort((a, b) => (b.target ? Number(b.target.limit_amount) : 0) - (a.target ? Number(a.target.limit_amount) : 0) || b.spent - a.spent);
 
-  return { rows, month, period };
+  return { rows, month, period, income, totalMonthlyExpected };
 }
 
 export function getGoalsView(data) {
