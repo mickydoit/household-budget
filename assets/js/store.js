@@ -1,7 +1,7 @@
 // Data layer — dual backend: Supabase (shared) or localStorage (solo/test).
 // Both expose the same interface so the app doesn't care which is live.
 
-import { supabaseEnabled, sbSelect, sbInsert, sbUpsert, sbUpdate, sbDelete } from './supabase.js?v=13';
+import { supabaseEnabled, sbSelect, sbInsert, sbUpsert, sbUpdate, sbDelete } from './supabase.js?v=14';
 
 const DEFAULT_INCOME_SOURCES = [
   { id: 1, name: 'Full Life Psychology', person: 'Bek',     amount: 1500, frequency: 'fortnightly', color: '#8bffec' },
