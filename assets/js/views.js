@@ -1,6 +1,6 @@
 // HTML string renderers — pure functions, no DOM mutations.
 
-import { formatMonth, formatDate, prevMonth, nextMonth, fromMonthly, PERIOD_LABELS } from './compute.js?v=12';
+import { formatMonth, formatDate, prevMonth, nextMonth, fromMonthly, PERIOD_LABELS } from './compute.js?v=13';
 
 const cfg = (typeof window !== 'undefined' && window.BUDGET_CONFIG) || {};
 const CUR = cfg.CURRENCY_SYMBOL || 'R';
@@ -70,7 +70,7 @@ const FREQ_SHORT = { weekly: 'wk', fortnightly: '2wk', monthly: 'mo', annual: 'y
 const PERIOD_SHORT = { weekly: 'wk', fortnightly: '2wk', monthly: 'mo', annual: 'yr' };
 
 // ── Dashboard ─────────────────────────────────────────────────
-export function renderDashboard({ income, expenses, balance, spendBreakdown, budgetRows, recent, month, accounts, incomeSources, totalMonthlyExpected, goals, period }) {
+export function renderDashboard({ income, expenses, balance, spendBreakdown, budgetRows, recent, month, accounts, incomeSources, totalMonthlyExpected, goals, period, expenseRows = [] }) {
   _ringCounter = 0;
 
   const maxSpend = spendBreakdown.length ? spendBreakdown[0].amount : 1;
@@ -168,6 +168,37 @@ export function renderDashboard({ income, expenses, balance, spendBreakdown, bud
       </div>`).join('')
     : `<p class="hint">No transactions this month.</p>`;
 
+  // ── Budget group bars for dashboard ──
+  const incomeMonthlyDash = income > 0 ? income : totalMonthlyExpected;
+  const catRowMapDash = {};
+  for (const r of expenseRows) catRowMapDash[r.category.name.toLowerCase()] = r;
+
+  const dashGroupsHtml = CATEGORY_GROUPS.map(grp => {
+    const grpRows = grp.cats.map(n => catRowMapDash[n.toLowerCase()]).filter(Boolean);
+    const grpPlannedMo = grpRows.reduce((s, r) => s + (r.target ? Number(r.target.limit_amount) : 0), 0);
+    const grpSpentMo   = grpRows.reduce((s, r) => s + r.spent, 0);
+    const pctOfIncome  = incomeMonthlyDash > 0 ? Math.min(100, grpSpentMo / incomeMonthlyDash * 100) : 0;
+    const pctOfBudget  = grpPlannedMo > 0 ? Math.min(100, grpSpentMo / grpPlannedMo * 100) : 0;
+    const barPct       = incomeMonthlyDash > 0 ? pctOfIncome : pctOfBudget;
+    const over         = grpPlannedMo > 0 && grpSpentMo > grpPlannedMo;
+    const grpSpentDisp = fromMonthly(grpSpentMo, period);
+    const grpPlanDisp  = fromMonthly(grpPlannedMo, period);
+    return `
+    <div class="dbgroup">
+      <div class="dbgroup-row">
+        <span class="dbgroup-name" style="color:${esc(grp.color)}">${grp.icon} ${grp.name}</span>
+        <div class="dbgroup-right">
+          ${grpSpentMo > 0 ? `<span class="dbgroup-spent">${fmt(grpSpentDisp)}</span>` : ''}
+          ${grpPlannedMo > 0 ? `<span class="dbgroup-plan">/ ${fmt(grpPlanDisp)}</span>` : ''}
+          <span class="dbgroup-pct${pctOfIncome >= 25 ? ' high' : ''}">${pctOfIncome > 0 ? pctOfIncome.toFixed(1) + '%' : grpPlannedMo > 0 ? '0%' : '—'}</span>
+        </div>
+      </div>
+      <div class="dbgroup-bar-track">
+        <div class="dbgroup-bar-fill${over ? ' over' : ''}" style="width:${barPct.toFixed(1)}%;background:${esc(grp.color)}"></div>
+      </div>
+    </div>`;
+  }).join('');
+
   // ── Savings goal rings for dashboard ──
   const goalRingsHtml = goals.length
     ? goals.map(g => ringChart({
@@ -228,11 +259,11 @@ export function renderDashboard({ income, expenses, balance, spendBreakdown, bud
       : `<div class="card"><p class="hint">No accounts yet. <a href="#/settings">Add one in Settings →</a></p></div>`}
   </section>
 
-  ${budgetRows.length ? `
   <section class="section">
-    <h2>Budget progress</h2>
-    <div class="rings-row card">${budgetRingHtml}</div>
-  </section>` : ''}
+    <h2>Budget breakdown</h2>
+    <div class="card dbgroups">${dashGroupsHtml}</div>
+    <div class="section-footer"><a href="#/budget" class="view-link">Set budgets →</a></div>
+  </section>
 
   <section class="section">
     <h2>Spending breakdown</h2>

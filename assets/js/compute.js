@@ -91,10 +91,18 @@ export function getDashboard(data, month, period = 'monthly') {
       : 0,
   })).sort((a, b) => b.progress - a.progress);
 
+  // Full expense category rows (same shape as getBudgetView) for dashboard groups
+  const allTargetMap = Object.fromEntries(
+    data.budget_targets.filter(b => b.month === month).map(b => [b.category_id, b])
+  );
+  const expenseRows = data.categories
+    .filter(c => c.type === 'expense')
+    .map(c => ({ category: c, target: allTargetMap[c.id] || null, spent: spentByCat[c.id] || 0 }));
+
   return {
     income, expenses, balance: income - expenses,
     spendBreakdown, budgetRows, recent, month, accounts,
-    incomeSources, totalMonthlyExpected, goals, period,
+    incomeSources, totalMonthlyExpected, goals, period, expenseRows,
   };
 }
 

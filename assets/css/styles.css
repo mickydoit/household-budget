@@ -802,6 +802,45 @@ body[data-route="goals"]  .period-btn.active { color: #fff; }
   z-index: 9999;
   white-space: nowrap;
 }
+/* ── Dashboard budget group bars ────────────────────────── */
+.dbgroups { padding: .25rem 0; }
+.dbgroup  { padding: .55rem 1rem .3rem; border-bottom: 1px solid var(--border); }
+.dbgroup:last-child { border-bottom: none; }
+.dbgroup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: .25rem;
+}
+.dbgroup-name {
+  font-weight: 700;
+  font-size: .78rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.dbgroup-right {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  font-size: .75rem;
+}
+.dbgroup-spent { font-weight: 700; color: var(--text); }
+.dbgroup-plan  { color: var(--text-3); }
+.dbgroup-pct   { font-weight: 800; font-size: .78rem; color: var(--text-2); min-width: 2.8rem; text-align: right; }
+.dbgroup-pct.high { color: var(--red); }
+.dbgroup-bar-track {
+  height: 3px;
+  background: rgba(255,255,255,.06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.dbgroup-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width .5s cubic-bezier(.4,0,.2,1);
+}
+.dbgroup-bar-fill.over { background: var(--red) !important; }
+
 /* ── Budget groups redesign ──────────────────────────────── */
 .budget-income-section {
   display: flex;
